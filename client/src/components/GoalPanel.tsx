@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ShoppingCart, Play, Loader2, Package, ShieldCheck, Repeat } from "lucide-react";
+import { ShoppingCart, Play, Loader2, Package, ShieldCheck, Repeat, Lock } from "lucide-react";
 import { API_BASE } from "../config";
 
 type Product = {
@@ -179,7 +179,36 @@ export default function GoalPanel({ goal, setGoal, budget, setBudget, onRun, run
           })}
         </div>
       </div>
+
+      <div className="bg-panel border border-line rounded-2xl p-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-3">
+          <Lock className="w-4 h-4 text-accent2" />
+          <h3 className="font-display font-semibold text-sm text-ink">Policy gate — rules enforced</h3>
+        </div>
+        <ul className="space-y-2 text-xs text-muted">
+          <li className="flex gap-2">
+            <span className="text-accent2 font-mono shrink-0">01</span>
+            No cart is submitted for an order until its total is verified within your stated budget.
+          </li>
+          <li className="flex gap-2">
+            <span className="text-accent2 font-mono shrink-0">02</span>
+            Every item's stock is checked before order creation — out-of-stock items are substituted
+            or dropped, never silently included.
+          </li>
+          <li className="flex gap-2">
+            <span className="text-accent2 font-mono shrink-0">03</span>
+            Any applied discount is capped per item at the catalog's stated maximum — the agent
+            cannot exceed it.
+          </li>
+          <li className="flex gap-2">
+            <span className="text-accent2 font-mono shrink-0">04</span>
+            If the gate rejects a cart, the agent gets exactly one bounded revision. A second
+            rejection stops the flow — no retry loop, no silent failure.
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }
+
 
