@@ -8,7 +8,7 @@ const STATUS_META: Record<
   pass: { icon: CheckCircle2, color: "text-pass", bg: "bg-pass/10", border: "border-pass/30" },
   fail: { icon: XCircle, color: "text-fail", bg: "bg-fail/10", border: "border-fail/30" },
   warn: { icon: AlertTriangle, color: "text-accent", bg: "bg-accent/10", border: "border-accent/30" },
-  info: { icon: Info, color: "text-ink", bg: "bg-ink/5", border: "border-ink/15" }
+  info: { icon: Info, color: "text-accent2", bg: "bg-accent2/10", border: "border-accent2/30" }
 };
 
 function formatTime(iso: string) {
@@ -73,3 +73,4 @@ export default function AuditTrail({ steps, running }: { steps: TimelineStep[]; 
     </div>
   );
 }
+
