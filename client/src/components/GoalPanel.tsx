@@ -67,8 +67,10 @@ export default function GoalPanel({ goal, setGoal, budget, setBudget, onRun, run
           budget, and every decision it makes is logged live on the right.
         </p>
 
-        <label className="block text-xs font-medium text-muted uppercase tracking-wide mb-1.5">Goal</label>
+                <label htmlFor="goal-input" className="block text-xs font-medium text-muted uppercase tracking-wide mb-1.5">Goal</label>
         <textarea
+          id="goal-input"
+          name="goal"
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
           rows={3}
@@ -77,10 +79,12 @@ export default function GoalPanel({ goal, setGoal, budget, setBudget, onRun, run
           className="w-full rounded-lg border border-line bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-muted/70 focus:border-ink focus:outline-none resize-none disabled:opacity-60"
         />
 
-        <label className="block text-xs font-medium text-muted uppercase tracking-wide mb-1.5 mt-4">
+                <label htmlFor="budget-input" className="block text-xs font-medium text-muted uppercase tracking-wide mb-1.5 mt-4">
           Budget (₹)
         </label>
         <input
+          id="budget-input"
+          name="budget"
           type="number"
           value={budget}
           onChange={(e) => setBudget(e.target.value)}
