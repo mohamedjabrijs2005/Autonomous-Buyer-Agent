@@ -104,4 +104,3 @@ export default function AuditTrail({ steps, running }: { steps: TimelineStep[]; 
   );
 }
 
-
