@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle, AlertTriangle, Info, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, Info, Clock, Download } from "lucide-react";
 import type { TimelineStep } from "../types";
 
 const STATUS_META: Record<
@@ -19,17 +19,47 @@ function formatTime(iso: string) {
   }
 }
 
+function exportTrail(steps: TimelineStep[]) {
+  const payload = steps.map((s) => ({
+    step: s.event,
+    label: s.label,
+    status: s.status,
+    timestamp: s.timestamp,
+    data: s.raw ?? null
+  }));
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `audit-trail-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function AuditTrail({ steps, running }: { steps: TimelineStep[]; running: boolean }) {
   return (
     <div className="bg-panel border border-line rounded-2xl p-6 shadow-sm h-full flex flex-col">
       <div className="flex items-center gap-2 mb-1">
         <Clock className="w-5 h-5 text-ink" />
         <h2 className="font-display font-semibold text-lg text-ink">Audit trail</h2>
-        {running && (
+        {running ? (
           <span className="ml-auto flex items-center gap-1.5 text-[11px] font-mono text-accent uppercase tracking-wide">
             <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
             live
           </span>
+        ) : (
+          steps.length > 0 && (
+            <button
+              type="button"
+              onClick={() => exportTrail(steps)}
+              className="ml-auto flex items-center gap-1.5 text-[11px] font-medium text-accent2 hover:text-accent2/80 uppercase tracking-wide transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export JSON
+            </button>
+          )
         )}
       </div>
       <p className="text-sm text-muted mb-5">
@@ -73,4 +103,5 @@ export default function AuditTrail({ steps, running }: { steps: TimelineStep[]; 
     </div>
   );
 }
+
 
