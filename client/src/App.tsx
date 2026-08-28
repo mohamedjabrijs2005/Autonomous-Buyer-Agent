@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { ScrollText } from "lucide-react";
 import GoalPanel from "./components/GoalPanel";
 import AuditTrail from "./components/AuditTrail";
 import type { TimelineStep } from "./types";
@@ -9,8 +9,8 @@ let stepCounter = 0;
 const nextId = () => `step_${Date.now()}_${stepCounter++}`;
 
 export default function App() {
-  const [goal, setGoal] = useState("restock office snacks, prefer variety over quantity");
-  const [budget, setBudget] = useState("700");
+  const [goal, setGoal] = useState("");
+  const [budget, setBudget] = useState("");
   const [steps, setSteps] = useState<TimelineStep[]>([]);
   const [running, setRunning] = useState(false);
   const esRef = useRef<EventSource | null>(null);
@@ -178,13 +178,13 @@ export default function App() {
 
   return (
     <div className="min-h-full">
-      <header className="border-b border-line bg-panel">
+      <header className="border-b-2 border-ink bg-panel">
         <div className="max-w-6xl mx-auto px-6 py-5 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-ink to-ink/70 flex items-center justify-center shadow-sm shrink-0">
-            <Sparkles className="w-5 h-5 text-white" />
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-accent to-accent2 flex items-center justify-center shadow-sm shrink-0">
+            <ScrollText className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-mono text-[11px] text-muted uppercase tracking-wider mb-0.5">
+            <p className="font-mono text-[11px] text-accent font-medium uppercase tracking-wider mb-0.5">
               Agentic Commerce · Track 01
             </p>
             <h1 className="font-display font-bold text-xl text-ink">Ledger — Autonomous Buyer Agent</h1>
