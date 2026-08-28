@@ -14,4 +14,5 @@ export type TimelineStep = {
   status: StepStatus;
   timestamp: string;
   detail?: ReactNode;
+  raw?: unknown;
 };
