@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { ScrollText } from "lucide-react";
 import GoalPanel from "./components/GoalPanel";
 import AuditTrail from "./components/AuditTrail";
+import BudgetMeter from "./components/BudgetMeter";
 import type { TimelineStep } from "./types";
 import { API_BASE } from "./config";
 
@@ -13,6 +14,8 @@ export default function App() {
   const [budget, setBudget] = useState("");
   const [steps, setSteps] = useState<TimelineStep[]>([]);
   const [running, setRunning] = useState(false);
+  const [committed, setCommitted] = useState(0);
+  const [gateStatus, setGateStatus] = useState<"idle" | "running" | "passed" | "failed">("idle");
   const esRef = useRef<EventSource | null>(null);
 
   const addStep = (step: Omit<TimelineStep, "id">) => {
@@ -23,6 +26,8 @@ export default function App() {
     if (esRef.current) esRef.current.close();
     setSteps([]);
     setRunning(true);
+    setCommitted(0);
+    setGateStatus("running");
 
     const params = new URLSearchParams({ goal });
     if (budget) params.set("budget", budget);
@@ -36,6 +41,7 @@ export default function App() {
         label: "Goal received",
         status: "info",
         timestamp: data.timestamp,
+        raw: data,
         detail: (
           <>
             <div>"{data.goal}"</div>
@@ -51,17 +57,20 @@ export default function App() {
         event: "catalog_fetched",
         label: `Catalog queried — ${data.count} SKUs available`,
         status: "info",
-        timestamp: data.timestamp
+        timestamp: data.timestamp,
+        raw: data
       });
     });
 
     es.addEventListener("cart_proposed", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
+      setCommitted(data.total_estimated || 0);
       addStep({
         event: "cart_proposed",
         label: data.revised ? "Cart revised" : "Cart proposed",
         status: "info",
         timestamp: data.timestamp,
+        raw: data,
         detail: (
           <>
             {data.cart.map((c: any) => (
@@ -83,6 +92,7 @@ export default function App() {
         label: data.revised ? "Substitution re-applied on revision" : "Out-of-stock substitution",
         status: "warn",
         timestamp: data.timestamp,
+        raw: data,
         detail: data.substitutions.map((s: any, i: number) => (
           <div key={i}>
             {s.original} → {s.replacement} — {s.reason}
@@ -93,33 +103,40 @@ export default function App() {
 
     es.addEventListener("policy_check", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
+      if (typeof data.total === "number") setCommitted(data.total);
+      setGateStatus(data.passed ? "passed" : "failed");
       addStep({
         event: "policy_check",
         label: `Policy gate — attempt ${data.attempt}: ${data.passed ? "passed" : "failed"}`,
         status: data.passed ? "pass" : "fail",
         timestamp: data.timestamp,
+        raw: data,
         detail: <div>{data.reason}</div>
       });
     });
 
     es.addEventListener("revision_started", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
+      setGateStatus("running");
       addStep({
         event: "revision_started",
         label: "Gate failed — requesting one bounded revision",
         status: "warn",
         timestamp: data.timestamp,
+        raw: data,
         detail: <div>{data.reason}</div>
       });
     });
 
     es.addEventListener("flow_stopped", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
+      setGateStatus("failed");
       addStep({
         event: "flow_stopped",
         label: "Flow stopped — no money action taken",
         status: "fail",
         timestamp: data.timestamp,
+        raw: data,
         detail: <div>{data.reason}</div>
       });
       setRunning(false);
@@ -133,6 +150,7 @@ export default function App() {
         label: "Order created",
         status: "pass",
         timestamp: data.timestamp,
+        raw: data,
         detail: (
           <>
             <div className="font-mono">{data.order.id}</div>
@@ -146,11 +164,14 @@ export default function App() {
 
     es.addEventListener("done", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
+      setCommitted((prev) => data.total || prev);
+      setGateStatus("passed");
       addStep({
         event: "done",
         label: "Flow complete",
         status: "pass",
         timestamp: data.timestamp,
+        raw: data,
         detail: <div className="font-mono">Order {data.orderId} · ₹{data.total}</div>
       });
       setRunning(false);
@@ -164,6 +185,7 @@ export default function App() {
       } catch {
         /* SSE-level error, not a server-sent error event */
       }
+      setGateStatus("failed");
       addStep({
         event: "error",
         label: "Error",
@@ -176,6 +198,8 @@ export default function App() {
     });
   };
 
+  const budgetNum = budget ? Number(budget) : null;
+
   return (
     <div className="min-h-full">
       <header className="border-b-2 border-ink bg-panel">
@@ -187,7 +211,7 @@ export default function App() {
             <p className="font-mono text-[11px] text-accent font-medium uppercase tracking-wider mb-0.5">
               Agentic Commerce · Track 01
             </p>
-            <h1 className="font-display font-bold text-xl text-ink">Ledger — Autonomous Buyer Agent</h1>
+            <h1 className="font-display font-bold text-xl text-ink">Custos — The Gated Buyer Agent</h1>
           </div>
           <p className="text-xs text-muted max-w-xs text-right hidden md:block">
             Shops a merchant's catalog, gated and audited at every money action.
@@ -196,6 +220,11 @@ export default function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
+        {(running || steps.length > 0) && (
+          <div className="mb-6">
+            <BudgetMeter budget={budgetNum} committed={committed} status={gateStatus} />
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <GoalPanel
             goal={goal}
@@ -213,3 +242,4 @@ export default function App() {
     </div>
   );
 }
+
