@@ -208,9 +208,6 @@ export default function App() {
             <ScrollText className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-mono text-[11px] text-accent font-medium uppercase tracking-wider mb-0.5">
-              Agentic Commerce · Track 01
-            </p>
             <h1 className="font-display font-bold text-xl text-ink">Custos — The Gated Buyer Agent</h1>
           </div>
           <p className="text-xs text-muted max-w-xs text-right hidden md:block">
@@ -242,4 +239,3 @@ export default function App() {
     </div>
   );
 }
-
