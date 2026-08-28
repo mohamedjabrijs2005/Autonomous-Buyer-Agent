@@ -9,6 +9,7 @@ export default {
         panel: "#FFFFFF",
         line: "#E4E4E0",
         accent: "#C77D2E",
+        accent2: "#3E6E8E",
         pass: "#2E7D5B",
         fail: "#B23A2E",
         muted: "#8A8A85"
