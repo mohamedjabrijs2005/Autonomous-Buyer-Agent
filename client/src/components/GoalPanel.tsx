@@ -29,12 +29,31 @@ const PRESETS = [
 export default function GoalPanel({ goal, setGoal, budget, setBudget, onRun, running }: Props) {
   const [catalog, setCatalog] = useState<Product[]>([]);
 
-  useEffect(() => {
+ useEffect(() => {
+  // Render's free tier cold-starts after inactivity, so the very first
+  // request after opening the link can fail or time out. Retry a couple
+  // times with a short delay instead of giving up silently.
+  let cancelled = false;
+  const attempt = (retriesLeft: number) => {
     fetch(`${API_BASE}/catalog`)
       .then((r) => r.json())
-      .then(setCatalog)
-      .catch(() => setCatalog([]));
-  }, []);
+      .then((data) => {
+        if (!cancelled) setCatalog(data);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        if (retriesLeft > 0) {
+          setTimeout(() => attempt(retriesLeft - 1), 3000);
+        } else {
+          setCatalog([]);
+        }
+      });
+  };
+  attempt(3);
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
   return (
     <div className="flex flex-col gap-6">
