@@ -15,9 +15,13 @@ export default function ApprovalGate({ request, onDecide, deciding }: Props) {
         <h3 className="font-display font-semibold text-sm text-ink">Human approval required</h3>
       </div>
       <p className="text-xs text-muted mb-3">
-        This purchase is <span className="font-mono text-ink">₹{request.total}</span>, above the{" "}
-        <span className="font-mono text-ink">₹{request.threshold}</span> auto-approve threshold. The agent will not
-        create the order until you decide.
+        {request.reason || (
+          <>
+            This purchase is <span className="font-mono text-ink">₹{request.total}</span>, above the{" "}
+            <span className="font-mono text-ink">₹{request.threshold}</span> auto-approve threshold.
+          </>
+        )}{" "}
+        The agent will not create the order until you decide.
       </p>
       <div className="flex gap-2">
         <button
