@@ -223,6 +223,11 @@ export default function GoalPanel({ goal, setGoal, budget, setBudget, onRun, run
             If the gate rejects a cart, the agent gets exactly one bounded revision. A second
             rejection stops the flow — no retry loop, no silent failure.
           </li>
+          <li className="flex gap-2">
+            <span className="text-accent2 font-mono shrink-0">05</span>
+            A separate merchant-side policy (discount cap, minimum order value, manual-approval
+            categories) is checked after your own rules — both have to pass, independently.
+          </li>
         </ul>
       </div>
     </div>
