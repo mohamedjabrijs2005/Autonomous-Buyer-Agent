@@ -3,11 +3,14 @@ import { ScrollText } from "lucide-react";
 import GoalPanel from "./components/GoalPanel";
 import AuditTrail from "./components/AuditTrail";
 import BudgetMeter from "./components/BudgetMeter";
-import type { TimelineStep } from "./types";
+import RunHistory from "./components/RunHistory";
+import type { TimelineStep, RunSummary } from "./types";
 import { API_BASE } from "./config";
 
 let stepCounter = 0;
 const nextId = () => `step_${Date.now()}_${stepCounter++}`;
+let runCounter = 0;
+const nextRunId = () => `run_${Date.now()}_${runCounter++}`;
 
 export default function App() {
   const [goal, setGoal] = useState("");
@@ -16,18 +19,43 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [committed, setCommitted] = useState(0);
   const [gateStatus, setGateStatus] = useState<"idle" | "running" | "passed" | "failed">("idle");
+  const [history, setHistory] = useState<RunSummary[]>([]);
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
+  const stepsRef = useRef<TimelineStep[]>([]);
+  const committedRef = useRef(0);
+  const runMetaRef = useRef({ goal: "", budget: "" });
 
   const addStep = (step: Omit<TimelineStep, "id">) => {
-    setSteps((prev) => [...prev, { id: nextId(), ...step }]);
+    const newStep = { id: nextId(), ...step };
+    stepsRef.current = [...stepsRef.current, newStep];
+    setSteps(stepsRef.current);
+  };
+
+  const finishRun = (status: "passed" | "failed") => {
+    const summary: RunSummary = {
+      id: nextRunId(),
+      goal: runMetaRef.current.goal,
+      budget: runMetaRef.current.budget,
+      timestamp: new Date().toISOString(),
+      status,
+      total: committedRef.current,
+      steps: stepsRef.current
+    };
+    setHistory((prev) => [...prev, summary]);
+    setRunning(false);
   };
 
   const runAgent = () => {
     if (esRef.current) esRef.current.close();
+    stepsRef.current = [];
+    committedRef.current = 0;
+    runMetaRef.current = { goal, budget };
     setSteps([]);
     setRunning(true);
     setCommitted(0);
     setGateStatus("running");
+    setViewingId(null);
 
     const params = new URLSearchParams({ goal });
     if (budget) params.set("budget", budget);
@@ -64,7 +92,8 @@ export default function App() {
 
     es.addEventListener("cart_proposed", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
-      setCommitted(data.total_estimated || 0);
+      committedRef.current = data.total_estimated || 0;
+      setCommitted(committedRef.current);
       addStep({
         event: "cart_proposed",
         label: data.revised ? "Cart revised" : "Cart proposed",
@@ -103,7 +132,10 @@ export default function App() {
 
     es.addEventListener("policy_check", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
-      if (typeof data.total === "number") setCommitted(data.total);
+      if (typeof data.total === "number") {
+        committedRef.current = data.total;
+        setCommitted(data.total);
+      }
       setGateStatus(data.passed ? "passed" : "failed");
       addStep({
         event: "policy_check",
@@ -139,8 +171,8 @@ export default function App() {
         raw: data,
         detail: <div>{data.reason}</div>
       });
-      setRunning(false);
       es.close();
+      finishRun("failed");
     });
 
     es.addEventListener("order_created", (e) => {
@@ -164,7 +196,8 @@ export default function App() {
 
     es.addEventListener("done", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
-      setCommitted((prev) => data.total || prev);
+      if (typeof data.total === "number") committedRef.current = data.total;
+      setCommitted(committedRef.current);
       setGateStatus("passed");
       addStep({
         event: "done",
@@ -174,8 +207,8 @@ export default function App() {
         raw: data,
         detail: <div className="font-mono">Order {data.orderId} · ₹{data.total}</div>
       });
-      setRunning(false);
       es.close();
+      finishRun("passed");
     });
 
     es.addEventListener("error", (e) => {
@@ -193,12 +226,15 @@ export default function App() {
         timestamp: new Date().toISOString(),
         detail: <div>{message}</div>
       });
-      setRunning(false);
       es.close();
+      finishRun("failed");
     });
   };
 
   const budgetNum = budget ? Number(budget) : null;
+  const viewedRun = viewingId ? history.find((h) => h.id === viewingId) : null;
+  const displaySteps = viewedRun ? viewedRun.steps : steps;
+  const displayRunning = viewedRun ? false : running;
 
   return (
     <div className="min-h-full">
@@ -218,8 +254,13 @@ export default function App() {
 
       <main className="max-w-6xl mx-auto px-6 py-8">
         {(running || steps.length > 0) && (
-          <div className="mb-6">
+          <div className="mb-4">
             <BudgetMeter budget={budgetNum} committed={committed} status={gateStatus} />
+          </div>
+        )}
+        {history.length > 0 && (
+          <div className="mb-6">
+            <RunHistory history={history} viewingId={viewingId} onSelect={setViewingId} isLiveActive={running} />
           </div>
         )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
@@ -232,7 +273,7 @@ export default function App() {
             running={running}
           />
           <div className="lg:sticky lg:top-8">
-            <AuditTrail steps={steps} running={running} />
+            <AuditTrail steps={displaySteps} running={displayRunning} />
           </div>
         </div>
       </main>
