@@ -161,7 +161,25 @@ export default function GoalPanel({ goal, setGoal, budget, setBudget, onRun, run
             return (
               <div
                 key={p.id}
-                className="flex items-center justify-between text-xs py-1.5 border-b border-line/70 last:border-0"
+                role="button"
+                tabIndex={running ? -1 : 0}
+                onClick={() => {
+                  if (running) return;
+                  setGoal(`Buy ${p.name}`);
+                  setBudget(String(p.price));
+                }}
+                onKeyDown={(e) => {
+                  if (running) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setGoal(`Buy ${p.name}`);
+                    setBudget(String(p.price));
+                  }
+                }}
+                title={running ? undefined : `Click to set goal & budget for ${p.name}`}
+                className={`flex items-center justify-between text-xs py-1.5 px-1.5 -mx-1.5 rounded-md border-b border-line/70 last:border-0 transition-colors ${
+                  running ? "" : "cursor-pointer hover:bg-surface"
+                }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span
@@ -210,5 +228,3 @@ export default function GoalPanel({ goal, setGoal, budget, setBudget, onRun, run
     </div>
   );
 }
-
-
