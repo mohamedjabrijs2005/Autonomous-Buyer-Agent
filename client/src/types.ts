@@ -9,7 +9,7 @@ export type StepStatus = "info" | "pass" | "fail" | "warn";
 
 export type RiskLevel = "low" | "medium" | "high";
 export type RiskInfo = { score: number; level: RiskLevel; reasons: string[] };
-export type ApprovalRequest = { total: number; threshold: number };
+export type ApprovalRequest = { total: number; threshold: number; reason?: string };
 
 export type TimelineStep = {
   id: string;
