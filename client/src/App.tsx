@@ -1,10 +1,12 @@
 import { useRef, useState } from "react";
-import { ScrollText } from "lucide-react";
+import { ScrollText, Square } from "lucide-react";
 import GoalPanel from "./components/GoalPanel";
 import AuditTrail from "./components/AuditTrail";
 import BudgetMeter from "./components/BudgetMeter";
+import RiskMeter from "./components/RiskMeter";
+import ApprovalGate from "./components/ApprovalGate";
 import RunHistory from "./components/RunHistory";
-import type { TimelineStep, RunSummary } from "./types";
+import type { TimelineStep, RunSummary, RiskInfo, ApprovalRequest } from "./types";
 import { API_BASE } from "./config";
 
 let stepCounter = 0;
@@ -21,10 +23,21 @@ export default function App() {
   const [gateStatus, setGateStatus] = useState<"idle" | "running" | "passed" | "failed">("idle");
   const [history, setHistory] = useState<RunSummary[]>([]);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  const [risk, setRisk] = useState<RiskInfo | null>(null);
+  const [approval, setApproval] = useState<ApprovalRequest | null>(null);
+  const [deciding, setDeciding] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const esRef = useRef<EventSource | null>(null);
   const stepsRef = useRef<TimelineStep[]>([]);
   const committedRef = useRef(0);
+  const riskRef = useRef<RiskInfo | null>(null);
+  const runIdRef = useRef<string>("");
   const runMetaRef = useRef({ goal: "", budget: "" });
+
+  const genRunId = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `run_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
   const addStep = (step: Omit<TimelineStep, "id">) => {
     const newStep = { id: nextId(), ...step };
@@ -32,7 +45,7 @@ export default function App() {
     setSteps(stepsRef.current);
   };
 
-  const finishRun = (status: "passed" | "failed") => {
+  const finishRun = (status: "passed" | "failed" | "stopped") => {
     const summary: RunSummary = {
       id: nextRunId(),
       goal: runMetaRef.current.goal,
@@ -40,24 +53,32 @@ export default function App() {
       timestamp: new Date().toISOString(),
       status,
       total: committedRef.current,
-      steps: stepsRef.current
+      steps: stepsRef.current,
+      risk: riskRef.current || undefined
     };
     setHistory((prev) => [...prev, summary]);
     setRunning(false);
+    setStopping(false);
+    setApproval(null);
   };
 
   const runAgent = () => {
     if (esRef.current) esRef.current.close();
     stepsRef.current = [];
     committedRef.current = 0;
+    riskRef.current = null;
     runMetaRef.current = { goal, budget };
+    runIdRef.current = genRunId();
     setSteps([]);
     setRunning(true);
     setCommitted(0);
     setGateStatus("running");
     setViewingId(null);
+    setRisk(null);
+    setApproval(null);
+    setStopping(false);
 
-    const params = new URLSearchParams({ goal });
+    const params = new URLSearchParams({ goal, runId: runIdRef.current });
     if (budget) params.set("budget", budget);
     const es = new EventSource(`${API_BASE}/agent/run?${params.toString()}`);
     esRef.current = es;
@@ -160,6 +181,88 @@ export default function App() {
       });
     });
 
+    es.addEventListener("risk_assessed", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      const riskInfo = { score: data.score, level: data.level, reasons: data.reasons };
+      riskRef.current = riskInfo;
+      setRisk(riskInfo);
+      addStep({
+        event: "risk_assessed",
+        label: `Risk assessed — ${data.score}/100 (${String(data.level).toUpperCase()})`,
+        status: data.level === "high" ? "warn" : "info",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: (
+          <>
+            {data.reasons.map((r: string, i: number) => (
+              <div key={i}>• {r}</div>
+            ))}
+          </>
+        )
+      });
+    });
+
+    es.addEventListener("approval_required", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      setApproval({ total: data.total, threshold: data.threshold });
+      addStep({
+        event: "approval_required",
+        label: "Human approval required — high-value purchase",
+        status: "warn",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: <div>₹{data.total} exceeds the ₹{data.threshold} auto-approve threshold. Waiting for a decision.</div>
+      });
+    });
+
+    es.addEventListener("approval_granted", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      setApproval(null);
+      setDeciding(false);
+      addStep({
+        event: "approval_granted",
+        label: "Purchase approved by human",
+        status: "pass",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: <div className="font-mono">₹{data.total}</div>
+      });
+    });
+
+    es.addEventListener("order_rejected", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      setApproval(null);
+      setDeciding(false);
+      setGateStatus("failed");
+      addStep({
+        event: "order_rejected",
+        label: "Order rejected — no money action taken",
+        status: "fail",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: <div>{data.reason}</div>
+      });
+      es.close();
+      finishRun("failed");
+    });
+
+    es.addEventListener("agent_stopped", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      setApproval(null);
+      setDeciding(false);
+      setGateStatus("failed");
+      addStep({
+        event: "agent_stopped",
+        label: "🛑 Agent stopped via kill switch",
+        status: "fail",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: <div>{data.reason}</div>
+      });
+      es.close();
+      finishRun("stopped");
+    });
+
     es.addEventListener("flow_stopped", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
       setGateStatus("failed");
@@ -231,10 +334,39 @@ export default function App() {
     });
   };
 
+  const handleApprove = async (approved: boolean) => {
+    setDeciding(true);
+    try {
+      await fetch(`${API_BASE}/agent/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: runIdRef.current, approved })
+      });
+    } catch {
+      // If the request fails, the run will stall on the backend's pending
+      // promise — resurface the option to try again rather than hiding it.
+      setDeciding(false);
+    }
+  };
+
+  const handleStop = async () => {
+    setStopping(true);
+    try {
+      await fetch(`${API_BASE}/agent/stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: runIdRef.current })
+      });
+    } catch {
+      setStopping(false);
+    }
+  };
+
   const budgetNum = budget ? Number(budget) : null;
   const viewedRun = viewingId ? history.find((h) => h.id === viewingId) : null;
   const displaySteps = viewedRun ? viewedRun.steps : steps;
   const displayRunning = viewedRun ? false : running;
+  const displayRisk = viewedRun ? viewedRun.risk || null : risk;
 
   return (
     <div className="min-h-full">
@@ -249,13 +381,31 @@ export default function App() {
           <p className="text-xs text-muted max-w-xs text-right hidden md:block">
             Shops a merchant's catalog, gated and audited at every money action.
           </p>
+          {running && (
+            <button
+              type="button"
+              onClick={handleStop}
+              disabled={stopping}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-fail text-white hover:bg-fail/90 disabled:opacity-50 transition-colors shrink-0"
+              title="Emergency Kill Switch — stop the agent immediately"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+              {stopping ? "Stopping…" : "Stop agent"}
+            </button>
+          )}
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8">
         {(running || steps.length > 0) && (
-          <div className="mb-4">
+          <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
             <BudgetMeter budget={budgetNum} committed={committed} status={gateStatus} />
+            {displayRisk && <RiskMeter risk={displayRisk} />}
+          </div>
+        )}
+        {approval && !viewedRun && (
+          <div className="mb-4">
+            <ApprovalGate request={approval} onDecide={handleApprove} deciding={deciding} />
           </div>
         )}
         {history.length > 0 && (
