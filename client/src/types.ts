@@ -6,6 +6,9 @@ export type Substitution = { original: string; replacement: string; reason: stri
 export type Order = { id: string; source: string; amount: number; currency: string; status?: string };
 
 export type StepStatus = "info" | "pass" | "fail" | "warn";
+export type RiskLevel = "low" | "medium" | "high";
+export type RiskInfo = { score: number; level: RiskLevel; reasons: string[] };
+export type ApprovalRequest = { total: number; threshold: number };
 
 export type TimelineStep = {
   id: string;
@@ -25,4 +28,5 @@ export type RunSummary = {
   status: "passed" | "failed";
   total: number;
   steps: TimelineStep[];
+  risk?: RiskInfo;  
 };
