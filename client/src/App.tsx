@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScrollText, Square } from "lucide-react";
 import GoalPanel from "./components/GoalPanel";
 import AuditTrail from "./components/AuditTrail";
@@ -33,6 +33,32 @@ export default function App() {
   const riskRef = useRef<RiskInfo | null>(null);
   const runIdRef = useRef<string>("");
   const runMetaRef = useRef({ goal: "", budget: "" });
+  // Maps a catalog product id ("p4") to its human-readable name and price,
+  // so the audit trail can read "Roasted Chana (300g)" instead of "p4" —
+  // a raw SKU id means nothing to a judge or non-technical reader. Kept in
+  // a ref (not state) so it's always current at event-handling time
+  // regardless of when the fetch resolves relative to a run starting.
+  const catalogMapRef = useRef<Record<string, { name: string; category: string; price: number }>>({});
+
+  useEffect(() => {
+    fetch(`${API_BASE}/catalog`)
+      .then((r) => r.json())
+      .then((data: { id: string; name: string; category: string; price: number }[]) => {
+        const map: Record<string, { name: string; category: string; price: number }> = {};
+        data.forEach((p) => {
+          map[p.id] = { name: p.name, category: p.category, price: p.price };
+        });
+        catalogMapRef.current = map;
+      })
+      .catch(() => {
+        // Non-fatal — labels just fall back to raw ids below if this fails.
+      });
+  }, []);
+
+  // Human-readable label for a catalog id. Falls back to the raw id only if
+  // the catalog hasn't loaded yet or the id is unrecognized, so the trail
+  // never breaks — it just briefly shows the id until the fetch resolves.
+  const productLabel = (id: string) => catalogMapRef.current[id]?.name || id;
 
   const genRunId = () =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -124,10 +150,10 @@ export default function App() {
         detail: (
           <>
             {data.cart.map((c: any) => (
-              <div key={c.id} className="text-pass">✓ {c.id} × {c.qty} — {c.reason}</div>
+              <div key={c.id} className="text-pass">✓ {productLabel(c.id)} × {c.qty} — {c.reason}</div>
             ))}
             {data.rejected.map((r: any) => (
-              <div key={r.id} className="text-muted">✕ {r.id} — {r.reason}</div>
+              <div key={r.id} className="text-muted">✕ {productLabel(r.id)} — {r.reason}</div>
             ))}
             <div className="font-mono text-ink pt-0.5">Estimated total: ₹{data.total_estimated}</div>
           </>
@@ -304,11 +330,20 @@ export default function App() {
       setGateStatus("passed");
       addStep({
         event: "done",
-        label: "Flow complete",
+        label: "Flow complete — order placed",
         status: "pass",
         timestamp: data.timestamp,
         raw: data,
-        detail: <div className="font-mono">Order {data.orderId} · ₹{data.total}</div>
+        detail: (
+          <>
+            <div className="font-mono">Order {data.orderId} · ₹{data.total}</div>
+            <div className="mt-1 space-y-0.5">
+              {data.finalCart.map((c: any) => (
+                <div key={c.id}>• {productLabel(c.id)} × {c.qty}</div>
+              ))}
+            </div>
+          </>
+        )
       });
       es.close();
       finishRun("passed");
