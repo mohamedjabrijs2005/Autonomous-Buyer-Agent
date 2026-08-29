@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import basicRoutes from "./routes/basic.js";
 import agentRunRoutes from "./routes/agentRun.js";
+import controlRoutes from "./routes/control.js"; 
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.use(express.json());
 
 app.use(basicRoutes);
 app.use(agentRunRoutes);
+app.use(controlRoutes);
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
