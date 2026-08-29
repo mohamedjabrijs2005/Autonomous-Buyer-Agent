@@ -1,163 +1,197 @@
-// The buyer agent. Given a natural-language goal and the catalog, it proposes
-// a cart with a reason attached to every included AND every rejected item —
-// that reasoning is what gets rendered in the audit trail on the frontend.
-//
-// If GROQ_API_KEY is set, it uses Llama 3.3-70b via Groq for real reasoning.
-// If not, it falls back to a deterministic rule-based agent so the whole
-// flow still runs end-to-end with zero setup (useful for a demo where you
-// don't want to depend on an API key being present).
+import express from "express";
+import crypto from "crypto";
+import { getCatalog, findById, findSubstitute } from "../data/catalog.js";
+import { runBuyerAgent } from "../agent.js";
+import { checkPolicy } from "../policy.js";
+import { createOrder } from "../order.js";
+import { computeRiskScore } from "../risk.js";
+import { createRun, isStopped, waitForApproval, cleanupRun } from "../runState.js";
 
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const router = express.Router();
 
-function parseBudget(goalText, fallback = 2000) {
-  const match = goalText.match(/(?:₹|rs\.?|inr)\s?([\d,]+)/i);
-  if (match) return Number(match[1].replace(/,/g, ""));
-  return fallback;
+// Above this cart total, Human Approval Mode kicks in and the agent will
+// not create an order until a human explicitly approves it over
+// POST /agent/approve. Overridable per-run via ?approvalThreshold=.
+const DEFAULT_APPROVAL_THRESHOLD = 1200;
+
+function send(res, event, data) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify({ ...data, timestamp: new Date().toISOString() })}\n\n`);
 }
 
-async function runBuyerAgentWithGroq(goalText, catalog, budget, revisionNote) {
-  const systemPrompt = `You are an autonomous buyer agent shopping a merchant's catalog on behalf of a user.
-Respond with STRICT JSON only. No markdown, no prose outside the JSON, no code fences.
+// Checks the Emergency Kill Switch. If it's been pressed, sends the
+// agent_stopped event, cleans up run state, and ends the response. Returns
+// true if the caller should stop processing immediately.
+function stoppedOrContinue(runId, res) {
+  if (isStopped(runId)) {
+    send(res, "agent_stopped", {
+      reason: "Stopped by user via the Emergency Kill Switch. No further money actions were taken."
+    });
+    cleanupRun(runId);
+    res.end();
+    return true;
+  }
+  return false;
+}
 
-Given a goal and a catalog, choose items to buy within the budget. For EVERY item you include,
-give a short reason. For every notable item you deliberately did NOT pick, add it to "rejected" with a reason.
+// Runs the out-of-stock substitution pass over a proposed cart. Used after
+// EVERY proposal (initial and revised) so a revision can never silently
+// reintroduce an out-of-stock item.
+function applySubstitutions(cart, rejected) {
+  const substitutions = [];
+  let nextCart = [...cart];
+  let nextRejected = [...rejected];
 
-Output shape exactly:
-{
-  "cart": [{"id": "p1", "qty": 2, "reason": "..."}],
-  "rejected": [{"id": "p3", "reason": "..."}],
-  "total_estimated": 1234
-}`;
+  for (const line of cart) {
+    const product = findById(line.id);
+    if (product && product.stock === 0) {
+      const currentIds = nextCart.map((c) => c.id);
+      const sub = findSubstitute(line.id, currentIds);
+      nextCart = nextCart.filter((c) => c.id !== line.id);
+      if (sub) {
+        substitutions.push({
+          original: product.name,
+          replacement: sub.name,
+          reason: `${product.name} is out of stock; ${sub.name} is the nearest in-stock item in the same category.`
+        });
+        nextCart.push({ id: sub.id, qty: line.qty, reason: `Substituted for out-of-stock ${product.name}.` });
+      } else {
+        nextRejected.push({ id: line.id, reason: `${product.name} out of stock, no in-category substitute available.` });
+      }
+    }
+  }
 
-  const userPrompt = `Goal: ${goalText}
-Budget: ₹${budget}
-${revisionNote ? `Revision needed: ${revisionNote}` : ""}
+  return { cart: nextCart, rejected: nextRejected, substitutions };
+}
 
-Catalog:
-${JSON.stringify(catalog, null, 2)}`;
+router.get("/agent/run", async (req, res) => {
+  const goal = req.query.goal;
+  const budget = Number(req.query.budget) || undefined;
+  const runId = req.query.runId || crypto.randomUUID();
+  const approvalThreshold = Number(req.query.approvalThreshold) || DEFAULT_APPROVAL_THRESHOLD;
 
-  const res = await fetch(GROQ_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.4
-    })
+  if (!goal || !goal.trim()) {
+    res.status(400).json({ error: "goal is required" });
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive"
   });
 
-  if (!res.ok) throw new Error(`Groq API error: ${res.status}`);
-  const data = await res.json();
-  const raw = data.choices[0].message.content.trim();
-  const cleaned = raw.replace(/^```json\s*|```$/g, "");
-  return JSON.parse(cleaned);
-}
+  createRun(runId);
 
-function runBuyerAgentFallback(goalText, catalog, budget, revisionNote) {
-  // Deterministic stand-in: picks affordable, in-stock items across
-  // categories mentioned (or all categories if none named), and explains
-  // every decision the same way an LLM would.
-  //
-  // When the goal says "variety" (or similar), this round-robins one
-  // affordable item per category at a time instead of greedily sorting
-  // the whole pool by price — otherwise a cheap category (e.g. snacks)
-  // eats the whole budget before a second category ever gets a look in,
-  // which is the opposite of "variety".
-  const lowerGoal = goalText.toLowerCase();
-  const namedCategories = ["snacks", "beverages", "office"].filter((c) =>
-    lowerGoal.includes(c)
-  );
-  const pool = namedCategories.length
-    ? catalog.filter((p) => namedCategories.includes(p.category))
-    : catalog;
+  try {
+    const catalog = getCatalog();
+    send(res, "goal_received", { goal, budget: budget || null, runId });
 
-  const preferVariety = /variety|assort|mix|range/.test(lowerGoal);
+    if (stoppedOrContinue(runId, res)) return;
 
-  let remaining = revisionNote ? Math.round(budget * 0.85) : budget; // tighten on revision
-  const cart = [];
-  const rejected = [];
-  const chosenIds = new Set();
+    send(res, "catalog_fetched", { count: catalog.length });
 
-  if (preferVariety) {
-    const categories = [...new Set(pool.map((p) => p.category))];
-    let madeProgress = true;
+    const resolvedBudget = budget || 2000;
 
-    while (madeProgress && remaining > 0) {
-      madeProgress = false;
-      for (const cat of categories) {
-        const affordable = pool
-          .filter((p) => p.category === cat && !chosenIds.has(p.id) && p.price <= remaining)
-          .sort((a, b) => a.price - b.price);
-        const pick = affordable[0];
-        if (pick) {
-          cart.push({
-            id: pick.id,
-            qty: 1,
-            reason: `Adds ${cat} variety — cheapest unpicked item in that category within the remaining ₹${remaining} budget.`
-          });
-          chosenIds.add(pick.id);
-          remaining -= pick.price;
-          madeProgress = true;
-        }
-      }
+    // --- Step 1: initial proposal
+    let proposal = await runBuyerAgent(goal, catalog, budget);
+    if (stoppedOrContinue(runId, res)) return;
+    send(res, "cart_proposed", { cart: proposal.cart, rejected: proposal.rejected, total_estimated: proposal.total_estimated });
+
+    // --- Step 2: out-of-stock substitution pass (before policy check)
+    let subResult = applySubstitutions(proposal.cart, proposal.rejected);
+    proposal.cart = subResult.cart;
+    proposal.rejected = subResult.rejected;
+    let substitutionsCount = subResult.substitutions.length;
+    if (substitutionsCount) {
+      send(res, "substitution", { substitutions: subResult.substitutions });
     }
 
-    for (const p of pool) {
-      if (!chosenIds.has(p.id)) {
-        rejected.push({
-          id: p.id,
-          reason: `Skipped — ₹${p.price} didn't fit after prioritizing one-per-category variety first.`
-        });
+    if (stoppedOrContinue(runId, res)) return;
+
+    // --- Step 3: policy gate, attempt 1
+    let policyResult = checkPolicy(proposal.cart, resolvedBudget);
+    send(res, "policy_check", { attempt: 1, ...policyResult });
+
+    // --- Step 4: one bounded revision if gate failed
+    if (!policyResult.passed) {
+      if (stoppedOrContinue(runId, res)) return;
+
+      send(res, "revision_started", { reason: policyResult.reason });
+      proposal = await runBuyerAgent(goal, catalog, resolvedBudget, policyResult.reason);
+      if (stoppedOrContinue(runId, res)) return;
+      send(res, "cart_proposed", { revised: true, cart: proposal.cart, rejected: proposal.rejected, total_estimated: proposal.total_estimated });
+
+      // Re-run the substitution pass on the revised cart too — a revision
+      // must never be allowed to silently reintroduce an out-of-stock item.
+      subResult = applySubstitutions(proposal.cart, proposal.rejected);
+      proposal.cart = subResult.cart;
+      proposal.rejected = subResult.rejected;
+      substitutionsCount += subResult.substitutions.length;
+      if (subResult.substitutions.length) {
+        send(res, "substitution", { revised: true, substitutions: subResult.substitutions });
       }
+
+      if (stoppedOrContinue(runId, res)) return;
+
+      policyResult = checkPolicy(proposal.cart, resolvedBudget);
+      send(res, "policy_check", { attempt: 2, ...policyResult });
     }
-  } else {
-    const sorted = [...pool].sort((a, b) => a.price - b.price);
-    for (const item of sorted) {
-      // Note: stock is deliberately NOT checked here — availability is the
-      // policy gate's job (and the substitution step's job), not the agent's
-      // proposal step. This mirrors how an LLM agent would behave: it reasons
-      // about fit and budget, and the system around it enforces availability.
-      if (item.price <= remaining) {
-        cart.push({
-          id: item.id,
-          qty: 1,
-          reason: `Fits within remaining budget (₹${item.price}).`
+
+    // --- Step 5: stop gracefully if still failing — no silent failure, no infinite loop
+    if (!policyResult.passed) {
+      send(res, "flow_stopped", { reason: `Gate failed twice. Stopping — this is the bounded-retry rule, not an error. Last reason: ${policyResult.reason}` });
+      cleanupRun(runId);
+      res.end();
+      return;
+    }
+
+    if (stoppedOrContinue(runId, res)) return;
+
+    // --- Step 6: risk score — explanatory only, computed on the cart that
+    // already passed the policy gate. Never blocks anything by itself.
+    const risk = computeRiskScore({
+      cart: proposal.cart,
+      catalog,
+      total: policyResult.total,
+      budget: resolvedBudget,
+      substitutionsCount
+    });
+    send(res, "risk_assessed", { ...risk });
+
+    // --- Step 7: Human Approval Mode — high-value purchases pause here
+    // until a human explicitly approves or rejects over POST /agent/approve.
+    // The agent cannot create the order on its own past this point.
+    if (policyResult.total > approvalThreshold) {
+      send(res, "approval_required", { total: policyResult.total, threshold: approvalThreshold, runId });
+      const approved = await waitForApproval(runId);
+
+      if (stoppedOrContinue(runId, res)) return;
+
+      if (!approved) {
+        send(res, "order_rejected", {
+          reason: `Human approval denied for a ₹${policyResult.total} purchase (above the ₹${approvalThreshold} approval threshold). No order was created.`
         });
-        remaining -= item.price;
-      } else {
-        rejected.push({
-          id: item.id,
-          reason: `Skipped — ₹${item.price} would exceed the remaining budget of ₹${remaining}.`
-        });
+        cleanupRun(runId);
+        res.end();
+        return;
       }
+      send(res, "approval_granted", { total: policyResult.total });
     }
+
+    // --- Step 8: create the order (real Razorpay test-mode if keys present)
+    const order = await createOrder(policyResult.total, `receipt_${Date.now()}`);
+    send(res, "order_created", { order });
+
+    send(res, "done", { finalCart: proposal.cart, total: policyResult.total, orderId: order.id, source: order.source });
+    cleanupRun(runId);
+    res.end();
+  } catch (err) {
+    console.error(err);
+    send(res, "error", { message: err.message });
+    cleanupRun(runId);
+    res.end();
   }
+});
 
-  const total_estimated = cart.reduce((sum, c) => {
-    const p = catalog.find((x) => x.id === c.id);
-    return sum + (p ? p.price * c.qty : 0);
-  }, 0);
-
-  return { cart, rejected, total_estimated };
-}
-
-export async function runBuyerAgent(goalText, catalog, budgetOverride, revisionNote) {
-  const budget = budgetOverride || parseBudget(goalText);
-  if (process.env.GROQ_API_KEY) {
-    try {
-      return await runBuyerAgentWithGroq(goalText, catalog, budget, revisionNote);
-    } catch (err) {
-      console.error("Groq call failed, falling back to rule-based agent:", err.message);
-      return runBuyerAgentFallback(goalText, catalog, budget, revisionNote);
-    }
-  }
-  return runBuyerAgentFallback(goalText, catalog, budget, revisionNote);
-}
-
-export { parseBudget };
+export default router;
