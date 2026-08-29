@@ -2,7 +2,7 @@ import express from "express";
 import crypto from "crypto";
 import { getCatalog, findById, findSubstitute } from "../data/catalog.js";
 import { runBuyerAgent } from "../agent.js";
-import { checkPolicy } from "../policy.js";
+import { runPolicyGate } from "../policy.js";
 import { createOrder } from "../order.js";
 import { computeRiskScore } from "../risk.js";
 import { createRun, isStopped, waitForApproval, cleanupRun } from "../runState.js";
@@ -64,6 +64,19 @@ function applySubstitutions(cart, rejected) {
   return { cart: nextCart, rejected: nextRejected, substitutions };
 }
 
+// Runs the combined policy gate (user rules + merchant rules) for one
+// attempt and streams both check results. merchant_policy_check is only
+// sent when the user policy passed — no point telling the merchant story
+// about a cart the user's own rules already rejected.
+function runGateAndEmit(cart, budget, catalog, attempt, res) {
+  const gate = runPolicyGate(cart, budget, catalog);
+  send(res, "policy_check", { attempt, ...gate.userResult });
+  if (gate.userResult.passed && gate.merchantResult) {
+    send(res, "merchant_policy_check", { attempt, ...gate.merchantResult });
+  }
+  return gate;
+}
+
 router.get("/agent/run", async (req, res) => {
   const goal = req.query.goal;
   const budget = Number(req.query.budget) || undefined;
@@ -109,16 +122,16 @@ router.get("/agent/run", async (req, res) => {
 
     if (stoppedOrContinue(runId, res)) return;
 
-    // --- Step 3: policy gate, attempt 1
-    let policyResult = checkPolicy(proposal.cart, resolvedBudget);
-    send(res, "policy_check", { attempt: 1, ...policyResult });
+    // --- Step 3: policy gate, attempt 1 — user rules AND merchant rules
+    let gate = runGateAndEmit(proposal.cart, resolvedBudget, catalog, 1, res);
 
-    // --- Step 4: one bounded revision if gate failed
-    if (!policyResult.passed) {
+    // --- Step 4: one bounded revision if EITHER side of the gate failed
+    if (!gate.passed) {
       if (stoppedOrContinue(runId, res)) return;
 
-      send(res, "revision_started", { reason: policyResult.reason });
-      proposal = await runBuyerAgent(goal, catalog, resolvedBudget, policyResult.reason);
+      const failReason = gate.stage === "user" ? gate.userResult.reason : gate.merchantResult.reason;
+      send(res, "revision_started", { reason: failReason, stage: gate.stage });
+      proposal = await runBuyerAgent(goal, catalog, resolvedBudget, failReason);
       if (stoppedOrContinue(runId, res)) return;
       send(res, "cart_proposed", { revised: true, cart: proposal.cart, rejected: proposal.rejected, total_estimated: proposal.total_estimated });
 
@@ -134,13 +147,15 @@ router.get("/agent/run", async (req, res) => {
 
       if (stoppedOrContinue(runId, res)) return;
 
-      policyResult = checkPolicy(proposal.cart, resolvedBudget);
-      send(res, "policy_check", { attempt: 2, ...policyResult });
+      gate = runGateAndEmit(proposal.cart, resolvedBudget, catalog, 2, res);
     }
 
     // --- Step 5: stop gracefully if still failing — no silent failure, no infinite loop
-    if (!policyResult.passed) {
-      send(res, "flow_stopped", { reason: `Gate failed twice. Stopping — this is the bounded-retry rule, not an error. Last reason: ${policyResult.reason}` });
+    if (!gate.passed) {
+      const failReason = gate.stage === "user" ? gate.userResult.reason : gate.merchantResult.reason;
+      send(res, "flow_stopped", {
+        reason: `Gate failed twice (${gate.stage} policy). Stopping — this is the bounded-retry rule, not an error. Last reason: ${failReason}`
+      });
       cleanupRun(runId);
       res.end();
       return;
@@ -149,41 +164,51 @@ router.get("/agent/run", async (req, res) => {
     if (stoppedOrContinue(runId, res)) return;
 
     // --- Step 6: risk score — explanatory only, computed on the cart that
-    // already passed the policy gate. Never blocks anything by itself.
+    // already cleared BOTH policy gates. Never blocks anything by itself.
     const risk = computeRiskScore({
       cart: proposal.cart,
       catalog,
-      total: policyResult.total,
+      total: gate.total,
       budget: resolvedBudget,
       substitutionsCount
     });
     send(res, "risk_assessed", { ...risk });
 
-    // --- Step 7: Human Approval Mode — high-value purchases pause here
-    // until a human explicitly approves or rejects over POST /agent/approve.
-    // The agent cannot create the order on its own past this point.
-    if (policyResult.total > approvalThreshold) {
-      send(res, "approval_required", { total: policyResult.total, threshold: approvalThreshold, runId });
+    // --- Step 7: Human Approval Mode — pauses for either of two reasons:
+    // a high-value cart (amount-based), or the merchant policy flagging a
+    // restricted category (rule-based, independent of amount). The agent
+    // cannot create the order on its own past this point in either case.
+    if (gate.total > approvalThreshold || gate.requiresManualApproval) {
+      const approvalReason = gate.requiresManualApproval
+        ? `Merchant policy requires manual approval for this cart's category, regardless of amount.`
+        : `₹${gate.total} exceeds the ₹${approvalThreshold} auto-approve threshold.`;
+      send(res, "approval_required", {
+        total: gate.total,
+        threshold: approvalThreshold,
+        runId,
+        reason: approvalReason,
+        requiresManualApproval: gate.requiresManualApproval
+      });
       const approved = await waitForApproval(runId);
 
       if (stoppedOrContinue(runId, res)) return;
 
       if (!approved) {
         send(res, "order_rejected", {
-          reason: `Human approval denied for a ₹${policyResult.total} purchase (above the ₹${approvalThreshold} approval threshold). No order was created.`
+          reason: `Human approval denied for a ₹${gate.total} purchase. No order was created.`
         });
         cleanupRun(runId);
         res.end();
         return;
       }
-      send(res, "approval_granted", { total: policyResult.total });
+      send(res, "approval_granted", { total: gate.total });
     }
 
     // --- Step 8: create the order (real Razorpay test-mode if keys present)
-    const order = await createOrder(policyResult.total, `receipt_${Date.now()}`);
+    const order = await createOrder(gate.total, `receipt_${Date.now()}`);
     send(res, "order_created", { order });
 
-    send(res, "done", { finalCart: proposal.cart, total: policyResult.total, orderId: order.id, source: order.source });
+    send(res, "done", { finalCart: proposal.cart, total: gate.total, orderId: order.id, source: order.source });
     cleanupRun(runId);
     res.end();
   } catch (err) {
