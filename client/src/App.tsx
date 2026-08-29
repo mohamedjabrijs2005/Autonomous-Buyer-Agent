@@ -186,8 +186,21 @@ export default function App() {
       setGateStatus(data.passed ? "passed" : "failed");
       addStep({
         event: "policy_check",
-        label: `Policy gate — attempt ${data.attempt}: ${data.passed ? "passed" : "failed"}`,
+        label: `Your policy gate — attempt ${data.attempt}: ${data.passed ? "passed" : "failed"}`,
         status: data.passed ? "pass" : "fail",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: <div>{data.reason}</div>
+      });
+    });
+
+    es.addEventListener("merchant_policy_check", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      setGateStatus(data.passed ? "passed" : "failed");
+      addStep({
+        event: "merchant_policy_check",
+        label: `Merchant policy gate — attempt ${data.attempt}: ${data.passed ? "passed" : "failed"}`,
+        status: data.passed ? (data.requiresManualApproval ? "warn" : "pass") : "fail",
         timestamp: data.timestamp,
         raw: data,
         detail: <div>{data.reason}</div>
@@ -230,14 +243,14 @@ export default function App() {
 
     es.addEventListener("approval_required", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
-      setApproval({ total: data.total, threshold: data.threshold });
+      setApproval({ total: data.total, threshold: data.threshold, reason: data.reason });
       addStep({
         event: "approval_required",
-        label: "Human approval required — high-value purchase",
+        label: "Human approval required",
         status: "warn",
         timestamp: data.timestamp,
         raw: data,
-        detail: <div>₹{data.total} exceeds the ₹{data.threshold} auto-approve threshold. Waiting for a decision.</div>
+        detail: <div>{data.reason}</div>
       });
     });
 
