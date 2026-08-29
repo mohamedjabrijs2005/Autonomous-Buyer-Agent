@@ -16,3 +16,13 @@ export type TimelineStep = {
   detail?: ReactNode;
   raw?: unknown;
 };
+
+export type RunSummary = {
+  id: string;
+  goal: string;
+  budget: string;
+  timestamp: string;
+  status: "passed" | "failed";
+  total: number;
+  steps: TimelineStep[];
+};
