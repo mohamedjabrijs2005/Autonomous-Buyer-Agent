@@ -119,12 +119,18 @@ function runBuyerAgentFallback(pool, budget, revisionNote) {
   return { cart, rejected, total_estimated };
 }
 
-export async function runBuyerAgent(goalText, catalog, budgetOverride, revisionNote) {
+export async function runBuyerAgent(goalText, catalog, budgetOverride, revisionNote, blockedIds = []) {
   const budget = budgetOverride || parseBudget(goalText);
   // Category filtering happens HERE, deterministically, before either
   // reasoning path runs. The LLM (if used) only ever sees the already-
   // filtered pool — it never gets to decide category eligibility itself.
-  const { pool } = interpretGoal(goalText, catalog);
+  const { pool: categoryPool } = interpretGoal(goalText, catalog);
+  // Once a SKU has been discovered out-of-stock earlier in THIS run (see
+  // agentRun.js's blockedSkuIds), it must never be reconsidered — not even
+  // on the bounded revision. Excluding it from the pool here, rather than
+  // relying solely on downstream substitution to catch it every time, is
+  // what stops "Masala Makhana" from being proposed again during revision.
+  const pool = blockedIds.length ? categoryPool.filter((p) => !blockedIds.includes(p.id)) : categoryPool;
   if (process.env.GROQ_API_KEY) {
     try {
       return await runBuyerAgentWithGroq(goalText, pool, budget, revisionNote);
