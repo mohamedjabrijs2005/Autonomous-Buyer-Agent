@@ -103,6 +103,21 @@ router.get("/agent/run", async (req, res) => {
     if (stoppedOrContinue(runId, res)) return;
 
     send(res, "catalog_fetched", { count: catalog.length });
+    
+    // --- Goal interpretation — deterministic category constraint, computed
+    // BEFORE cart selection and shown explicitly, so a judge can see the
+    // agent was never allowed to consider out-of-category products at all.
+    const { categories, pool } = interpretGoal(goal, catalog);
+    send(res, "goal_interpreted", {
+      categories,
+      eligibleCount: pool.length,
+      totalCount: catalog.length,
+      reason: categories
+        ? `Restricted the search to ${categories.join(", ")} products because the goal specifies ${categories.join(" and ")}.`
+        : "No specific category detected in the goal — considering the full catalog."
+    });
+
+    if (stoppedOrContinue(runId, res)) return;
 
     const resolvedBudget = budget || 2000;
 
