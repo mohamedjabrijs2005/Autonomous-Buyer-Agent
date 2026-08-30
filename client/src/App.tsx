@@ -179,7 +179,19 @@ export default function App() {
         )
       });
     });
-
+    
+     es.addEventListener("stock_check", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      addStep({
+        event: "stock_check",
+        label: data.revised ? "Stock check (revised cart) — failed" : "Stock check — failed",
+        status: "fail",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: data.checks.map((c: any, i: number) => <div key={i}>{c.reason}</div>)
+      });
+    });
+    
     es.addEventListener("substitution", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
       addStep({
