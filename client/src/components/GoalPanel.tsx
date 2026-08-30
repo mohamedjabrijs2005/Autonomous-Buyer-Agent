@@ -18,15 +18,16 @@ type Props = {
   setBudget: (v: string) => void;
   onRun: () => void;
   running: boolean;
-};
+  waitingApproval?: boolean;
+}
 
 const PRESETS = [
-  { label: "Snacks under ₹700", goal: "restock office snacks, prefer variety over quantity", budget: "700" },
+  { label: "Snacks under ₹500", goal: "restock snacks, prefer variety", budget: "500" },
   { label: "Beverages under ₹1000", goal: "restock beverages for the pantry", budget: "1000" },
   { label: "Mixed, ₹2000", goal: "restock office snacks and stationery, prefer variety", budget: "2000" }
 ];
 
-export default function GoalPanel({ goal, setGoal, budget, setBudget, onRun, running }: Props) {
+export default function GoalPanel({ goal, setGoal, budget, setBudget, onRun, running, waitingApproval }: Props) {
   const [catalog, setCatalog] = useState<Product[]>([]);
 
   useEffect(() => {
@@ -137,7 +138,11 @@ export default function GoalPanel({ goal, setGoal, budget, setBudget, onRun, run
           disabled={running || !goal.trim()}
           className="mt-5 w-full flex items-center justify-center gap-2 rounded-lg bg-accent text-white font-medium text-sm py-2.5 hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
         >
-          {running ? (
+          {waitingApproval ? (
+            <>
+              <Lock className="w-4 h-4" /> Waiting for human approval…
+            </>
+          ) : running ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" /> Agent running…
             </>
