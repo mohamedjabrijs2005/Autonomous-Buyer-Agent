@@ -126,7 +126,7 @@ export default function App() {
       });
     });
 
-    es.addEventListener("catalog_fetched", (e) => {
+       es.addEventListener("catalog_fetched", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
       addStep({
         event: "catalog_fetched",
@@ -134,6 +134,25 @@ export default function App() {
         status: "info",
         timestamp: data.timestamp,
         raw: data
+      });
+    });
+
+    es.addEventListener("goal_interpreted", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      addStep({
+        event: "goal_interpreted",
+        label: data.categories
+          ? `Goal interpreted — restricted to: ${data.categories.join(", ")}`
+          : "Goal interpreted — no category restriction",
+        status: "info",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: (
+          <>
+            <div>{data.reason}</div>
+            <div className="font-mono">Eligible SKUs: {data.eligibleCount} / {data.totalCount}</div>
+          </>
+        )
       });
     });
 
@@ -462,13 +481,14 @@ export default function App() {
           </div>
         )}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          <GoalPanel
+                    <GoalPanel
             goal={goal}
             setGoal={setGoal}
             budget={budget}
             setBudget={setBudget}
             onRun={runAgent}
             running={running}
+            waitingApproval={!!approval}
           />
           <div className="lg:sticky lg:top-8">
             <AuditTrail steps={displaySteps} running={displayRunning} />
