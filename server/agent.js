@@ -9,6 +9,28 @@
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
+// Deterministic category interpretation — this is the fix for the bug where
+// "restock office snacks" was matching BOTH "snacks" and "office" as
+// requested categories, because "office" appeared as a literal substring
+// even though it was only qualifying WHERE the snacks are for, not
+// requesting office supplies. Category filtering must happen before cart
+// selection, and it must be a deterministic rule the LLM cannot override —
+// not something left to prompt-following.
+const CATEGORY_KEYWORDS = {
+  snacks: /\bsnacks?\b/i,
+  beverages: /\bbeverages?\b|\bdrinks?\b|\bcoffee\b|\btea\b/i,
+  office: /\boffice\s+suppl(y|ies)\b|\bstationery\b|\bstationary\b|\bnotebooks?\b|\bpens?\b|\bsticky\s*notes?\b|\borganizers?\b/i
+};
+
+export function interpretGoal(goalText, catalog) {
+  const matched = Object.entries(CATEGORY_KEYWORDS)
+    .filter(([, re]) => re.test(goalText))
+    .map(([cat]) => cat);
+  const categories = matched.length ? matched : null; // null = no constraint, consider all categories
+  const pool = categories ? catalog.filter((p) => categories.includes(p.category)) : catalog;
+  return { categories, pool };
+}
+
 function parseBudget(goalText, fallback = 2000) {
   const match = goalText.match(/(?:₹|rs\.?|inr)\s?([\d,]+)/i);
   if (match) return Number(match[1].replace(/,/g, ""));
@@ -59,18 +81,10 @@ ${JSON.stringify(catalog, null, 2)}`;
   return JSON.parse(cleaned);
 }
 
-function runBuyerAgentFallback(goalText, catalog, budget, revisionNote) {
-  // Deterministic stand-in: picks affordable, in-stock items across
-  // categories mentioned (or all categories if none named), greedily
-  // within budget, and explains every decision the same way an LLM would.
-  const lowerGoal = goalText.toLowerCase();
-  const namedCategories = ["snacks", "beverages", "office"].filter((c) =>
-    lowerGoal.includes(c)
-  );
-  const pool = namedCategories.length
-    ? catalog.filter((p) => namedCategories.includes(p.category))
-    : catalog;
-
+function runBuyerAgentFallback(pool, budget, revisionNote) {
+  // Deterministic stand-in: picks affordable, in-stock items from the
+  // ALREADY category-filtered pool, greedily within budget, and explains
+  // every decision the same way an LLM would.
   let remaining = revisionNote ? Math.round(budget * 0.85) : budget; // tighten on revision
   const cart = [];
   const rejected = [];
@@ -98,7 +112,7 @@ function runBuyerAgentFallback(goalText, catalog, budget, revisionNote) {
   }
 
   const total_estimated = cart.reduce((sum, c) => {
-    const p = catalog.find((x) => x.id === c.id);
+    const p = pool.find((x) => x.id === c.id);
     return sum + (p ? p.price * c.qty : 0);
   }, 0);
 
@@ -107,15 +121,19 @@ function runBuyerAgentFallback(goalText, catalog, budget, revisionNote) {
 
 export async function runBuyerAgent(goalText, catalog, budgetOverride, revisionNote) {
   const budget = budgetOverride || parseBudget(goalText);
+  // Category filtering happens HERE, deterministically, before either
+  // reasoning path runs. The LLM (if used) only ever sees the already-
+  // filtered pool — it never gets to decide category eligibility itself.
+  const { pool } = interpretGoal(goalText, catalog);
   if (process.env.GROQ_API_KEY) {
     try {
-      return await runBuyerAgentWithGroq(goalText, catalog, budget, revisionNote);
+      return await runBuyerAgentWithGroq(goalText, pool, budget, revisionNote);
     } catch (err) {
       console.error("Groq call failed, falling back to rule-based agent:", err.message);
-      return runBuyerAgentFallback(goalText, catalog, budget, revisionNote);
+      return runBuyerAgentFallback(pool, budget, revisionNote);
     }
   }
-  return runBuyerAgentFallback(goalText, catalog, budget, revisionNote);
+  return runBuyerAgentFallback(pool, budget, revisionNote);
 }
 
 export { parseBudget };
