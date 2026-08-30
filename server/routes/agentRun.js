@@ -1,7 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import { getCatalog, findById, findSubstitute } from "../data/catalog.js";
-import { runBuyerAgent } from "../agent.js";
+import { runBuyerAgent, interpretGoal } from "../agent.js";
 import { runPolicyGate } from "../policy.js";
 import { createOrder } from "../order.js";
 import { computeRiskScore } from "../risk.js";
