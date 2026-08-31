@@ -809,11 +809,13 @@ Live audit trail
 
 ## 👥 Team : Solo
 Name: Mohamed Jabri J S 
+
 Mail Id: mohamedjabri904@gmail.com
 
 Built for the Razorpay Buildathon.
 
 **Project:** Custos - The Gated Buyer Agent
+
 **Track:** AI Growth & Agentic Commerce
 
 ```
