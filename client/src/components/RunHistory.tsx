@@ -14,29 +14,29 @@ export default function RunHistory({ history, viewingId, onSelect, isLiveActive 
   return (
     <div className="bg-panel border border-line rounded-xl p-3 shadow-card flex items-center gap-3">
       <div className="flex items-center gap-1.5 text-xs font-semibold text-muted uppercase tracking-wider shrink-0 pl-1 hidden sm:flex">
-        <History className="w-3.5 h-3.5" />
+        <History className="w-3.5 h-3.5 text-gold" />
         <span>Runs:</span>
       </div>
 
       <div className="flex items-center gap-2 overflow-x-auto py-0.5 flex-1 pr-1">
-        {/* Live Execution Tab */}
+        {/* Live Execution Tab (Gold when active) */}
         <button
           type="button"
           onClick={() => onSelect(null)}
           className={`flex items-center gap-1.5 shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all ${
             viewingId === null
-              ? "bg-brand text-white border-brand shadow-xs"
-              : "bg-surface text-muted border-line hover:border-slate-400 hover:text-ink"
+              ? "bg-gold text-white border-gold shadow-gold"
+              : "bg-surface text-muted border-line hover:border-gold hover:text-gold-hover hover:bg-gold-light"
           }`}
         >
           <span
             className={`w-2 h-2 rounded-full ${
-              isLiveActive ? "bg-emerald-400 animate-pulse" : "bg-slate-400"
+              isLiveActive ? "bg-emerald-300 animate-pulse" : "bg-slate-300"
             }`}
           />
           <span>Live Session</span>
           {isLiveActive && (
-            <Activity className="w-3 h-3 text-emerald-400 animate-pulse ml-0.5" />
+            <Activity className="w-3 h-3 text-emerald-300 animate-pulse ml-0.5" />
           )}
         </button>
 
@@ -51,28 +51,28 @@ export default function RunHistory({ history, viewingId, onSelect, isLiveActive 
               onClick={() => onSelect(run.id)}
               className={`flex items-center gap-2 shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border transition-all max-w-[240px] ${
                 isSelected
-                  ? "bg-brand text-white border-brand shadow-xs"
-                  : "bg-surface text-muted border-line hover:border-slate-400 hover:text-ink"
+                  ? "bg-gold text-white border-gold shadow-gold"
+                  : "bg-surface text-muted border-line hover:border-gold hover:text-gold-hover hover:bg-gold-light"
               }`}
               title={`Run ${history.length - idx}: ${run.goal}`}
             >
               {isPassed ? (
                 <CheckCircle2
                   className={`w-3.5 h-3.5 shrink-0 ${
-                    isSelected ? "text-emerald-300" : "text-pass"
+                    isSelected ? "text-emerald-200" : "text-pass"
                   }`}
                 />
               ) : (
                 <XCircle
                   className={`w-3.5 h-3.5 shrink-0 ${
-                    isSelected ? "text-rose-300" : "text-fail"
+                    isSelected ? "text-rose-200" : "text-fail"
                   }`}
                 />
               )}
               <span className="truncate">{run.goal || "Untitled run"}</span>
               <span
                 className={`font-mono text-[11px] shrink-0 ${
-                  isSelected ? "text-white/80" : "text-ink font-semibold"
+                  isSelected ? "text-white/90" : "text-ink font-semibold"
                 }`}
               >
                 ₹{run.total}

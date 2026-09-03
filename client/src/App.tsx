@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ScrollText,
   Square,
   ShieldCheck,
   CheckCircle2,
   XCircle,
-  AlertCircle,
   Clock,
   Download,
   ShieldAlert,
@@ -128,7 +128,7 @@ export default function App() {
         raw: data,
         detail: (
           <div className="space-y-1">
-            <div className="text-slate-800 font-medium italic">"{data.goal}"</div>
+            <div className="text-ink font-medium italic">"{data.goal}"</div>
             {data.budget && (
               <div className="font-mono text-[11px] text-muted">
                 Stated Budget: ₹{data.budget}
@@ -190,7 +190,7 @@ export default function App() {
               {data.cart.map((c: any) => (
                 <div key={c.id} className="py-1 flex items-baseline justify-between text-xs gap-2">
                   <div className="min-w-0">
-                    <span className="font-medium text-emerald-700">✓ {productLabel(c.id)}</span>
+                    <span className="font-medium text-pass">✓ {productLabel(c.id)}</span>
                     <span className="font-mono text-muted text-[11px] ml-1.5">× {c.qty}</span>
                     <div className="text-[11px] text-muted truncate">{c.reason}</div>
                   </div>
@@ -199,7 +199,7 @@ export default function App() {
               {data.rejected.map((r: any) => (
                 <div key={r.id} className="py-1 flex items-baseline justify-between text-xs gap-2">
                   <div className="min-w-0">
-                    <span className="font-medium text-slate-500">✕ {productLabel(r.id)}</span>
+                    <span className="font-medium text-muted">✕ {productLabel(r.id)}</span>
                     <div className="text-[11px] text-muted truncate">{r.reason}</div>
                   </div>
                 </div>
@@ -225,7 +225,7 @@ export default function App() {
         detail: (
           <div className="space-y-1">
             {data.checks.map((c: any, i: number) => (
-              <div key={i} className="text-rose-700 font-medium">
+              <div key={i} className="text-fail font-medium">
                 {c.reason}
               </div>
             ))}
@@ -246,10 +246,10 @@ export default function App() {
           <div className="space-y-1.5">
             {data.substitutions.map((s: any, i: number) => (
               <div key={i} className="text-xs">
-                <div className="flex items-center gap-1.5 font-medium text-amber-800">
-                  <span className="line-through text-slate-400">{s.original}</span>
+                <div className="flex items-center gap-1.5 font-medium text-gold-dark">
+                  <span className="line-through text-muted">{s.original}</span>
                   <span>→</span>
-                  <span className="text-emerald-700 font-semibold">{s.replacement}</span>
+                  <span className="text-pass font-semibold">{s.replacement}</span>
                 </div>
                 <div className="text-[11px] text-muted mt-0.5">{s.reason}</div>
               </div>
@@ -273,13 +273,13 @@ export default function App() {
       setGateStatus(data.passed ? "passed" : "failed");
       addStep({
         event: "policy_check",
-        label: `User policy gate — attempt ${data.attempt}: ${data.passed ? "passed" : "failed"}`,
+        label: `Your policy gate — attempt ${data.attempt}: ${data.passed ? "passed" : "failed"}`,
         status: data.passed ? "pass" : "fail",
         timestamp: data.timestamp,
         raw: data,
         detail: (
           <div className="text-xs">
-            <div className={`font-medium ${data.passed ? "text-emerald-700" : "text-rose-700"}`}>
+            <div className={`font-medium ${data.passed ? "text-pass" : "text-fail"}`}>
               {data.reason}
             </div>
             {typeof data.total === "number" && (
@@ -303,7 +303,7 @@ export default function App() {
         raw: data,
         detail: (
           <div className="text-xs">
-            <div className={`font-medium ${data.passed ? "text-emerald-700" : "text-rose-700"}`}>
+            <div className={`font-medium ${data.passed ? "text-pass" : "text-fail"}`}>
               {data.reason}
             </div>
           </div>
@@ -320,7 +320,7 @@ export default function App() {
         status: "warn",
         timestamp: data.timestamp,
         raw: data,
-        detail: <div className="text-amber-800 font-medium">{data.reason}</div>
+        detail: <div className="text-gold-dark font-medium">{data.reason}</div>
       });
     });
 
@@ -338,7 +338,7 @@ export default function App() {
         detail: (
           <div className="space-y-1">
             {data.reasons.map((r: string, i: number) => (
-              <div key={i} className="text-xs text-slate-700">
+              <div key={i} className="text-xs text-ink">
                 • {r}
               </div>
             ))}
@@ -356,7 +356,7 @@ export default function App() {
         status: "warn",
         timestamp: data.timestamp,
         raw: data,
-        detail: <div className="text-amber-800 font-medium">{data.reason}</div>
+        detail: <div className="text-gold-dark font-medium">{data.reason}</div>
       });
     });
 
@@ -370,7 +370,7 @@ export default function App() {
         status: "pass",
         timestamp: data.timestamp,
         raw: data,
-        detail: <div className="font-mono text-emerald-700 font-medium">₹{data.total} Authorized</div>
+        detail: <div className="font-mono text-pass font-medium">₹{data.total} Authorized</div>
       });
     });
 
@@ -385,7 +385,7 @@ export default function App() {
         status: "fail",
         timestamp: data.timestamp,
         raw: data,
-        detail: <div className="text-rose-700 font-medium">{data.reason}</div>
+        detail: <div className="text-fail font-medium">{data.reason}</div>
       });
       es.close();
       finishRun("failed");
@@ -402,7 +402,7 @@ export default function App() {
         status: "fail",
         timestamp: data.timestamp,
         raw: data,
-        detail: <div className="text-rose-700 font-medium">{data.reason}</div>
+        detail: <div className="text-fail font-medium">{data.reason}</div>
       });
       es.close();
       finishRun("stopped");
@@ -417,7 +417,7 @@ export default function App() {
         status: "fail",
         timestamp: data.timestamp,
         raw: data,
-        detail: <div className="text-rose-700 font-medium">{data.reason}</div>
+        detail: <div className="text-fail font-medium">{data.reason}</div>
       });
       es.close();
       finishRun("failed");
@@ -459,7 +459,7 @@ export default function App() {
         raw: data,
         detail: (
           <div className="space-y-1.5">
-            <div className="font-mono text-xs font-semibold text-emerald-700">
+            <div className="font-mono text-xs font-semibold text-pass">
               Order {data.orderId} · ₹{data.total}
             </div>
             <div className="text-xs text-muted space-y-0.5">
@@ -490,7 +490,7 @@ export default function App() {
         label: "Error",
         status: "fail",
         timestamp: new Date().toISOString(),
-        detail: <div className="text-rose-700 font-medium">{message}</div>
+        detail: <div className="text-fail font-medium">{message}</div>
       });
       es.close();
       finishRun("failed");
@@ -550,7 +550,6 @@ export default function App() {
   const displayCommitted = viewedRun ? viewedRun.total : committed;
   const displayBudgetNum = viewedRun ? Number(viewedRun.budget) || null : budgetNum;
 
-  // Find order info if available in steps
   const orderStep = displaySteps.find((s) => s.event === "order_created");
   const orderData = (orderStep?.raw as any)?.order || (viewedRun ? null : lastOrder);
   const isRunFinished =
@@ -562,45 +561,40 @@ export default function App() {
   const isRunSuccess = displaySteps.some((s) => s.event === "done");
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
-      {/* Header */}
+    <div className="min-h-screen flex flex-col bg-surface text-ink">
+      {/* Header — Restored Previous Logo & Bigger Title, No 'FINTECH AGENT' */}
       <header className="border-b border-line bg-panel sticky top-0 z-40 shadow-subtle">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4">
-          {/* Logo / Wordmark */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-brand text-white flex items-center justify-center font-bold tracking-tight shadow-xs shrink-0">
-              <ShieldCheck className="w-5 h-5 text-white stroke-[2.2]" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between gap-4">
+          {/* Logo & Title */}
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-gold to-[#E5A95A] flex items-center justify-center shadow-sm shrink-0">
+              <ScrollText className="w-5 h-5 text-white stroke-[2.2]" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-display font-bold text-base tracking-tight text-ink">
-                  CUSTOS
-                </span>
-                <span className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded bg-slate-100 text-muted border border-line">
-                  FinTech Agent
-                </span>
-              </div>
-              <p className="text-[11px] text-muted hidden sm:block">
-                The Gated Buyer Agent
+              <h1 className="font-display font-bold text-xl sm:text-2xl text-ink tracking-tight">
+                Custos — The Gated Buyer Agent
+              </h1>
+              <p className="text-xs text-muted hidden sm:block">
+                Shops a merchant's catalog, gated and audited at every money action.
               </p>
             </div>
           </div>
 
-          {/* Right Action & System Status */}
+          {/* Right Status & Kill Switch */}
           <div className="flex items-center gap-3">
-            {/* Status Pill */}
-            <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-surface border border-line text-muted">
+            {/* Status Indicator */}
+            <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-gold-light border border-gold-border text-gold-dark">
               <span
                 className={`w-2 h-2 rounded-full ${
                   running
-                    ? "bg-emerald-500 animate-pulse"
+                    ? "bg-pass animate-pulse"
                     : approval
-                    ? "bg-amber-500 animate-pulse"
-                    : "bg-slate-400"
+                    ? "bg-gold animate-pulse"
+                    : "bg-gold"
                 }`}
               />
-              <span className="text-[11px] font-mono">
-                {running ? "AGENT LIVE" : approval ? "AWAITING APPROVAL" : "SYSTEM READY"}
+              <span className="text-[11px] font-mono font-semibold">
+                {running ? "AGENT LIVE" : approval ? "AWAITING APPROVAL" : "READY"}
               </span>
             </div>
 
@@ -611,7 +605,7 @@ export default function App() {
                 onClick={handleStop}
                 disabled={stopping}
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-fail text-white hover:bg-rose-700 disabled:opacity-50 transition-colors shadow-xs shrink-0"
-                title="Emergency Kill Switch — immediately halts the autonomous agent"
+                title="Emergency Kill Switch — stop the agent immediately"
               >
                 <Square className="w-3.5 h-3.5 fill-current" />
                 <span>{stopping ? "Halting…" : "Stop agent"}</span>
@@ -621,7 +615,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Container */}
+      {/* Main Content Area */}
       <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1">
         {/* Human Approval Required Banner */}
         {approval && !viewedRun && (
@@ -630,33 +624,31 @@ export default function App() {
           </div>
         )}
 
-        {/* Top Summary Section — Only shown during/after runs */}
+        {/* Top Summary Section — 3 Compact Blocks & Completion Card */}
         {(displayRunning || displaySteps.length > 0) && (
           <div className="mb-6 space-y-4">
-            {/* 3 Compact Metric Blocks */}
+            {/* 3 Metric Blocks */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
-              {/* Block 1: Committed Spend */}
               <BudgetMeter
                 budget={displayBudgetNum}
                 committed={displayCommitted}
                 status={viewedRun ? (viewedRun.status === "passed" ? "passed" : "failed") : gateStatus}
               />
 
-              {/* Block 2: Transaction Risk */}
               {displayRisk ? (
                 <RiskMeter risk={displayRisk} />
               ) : (
                 <div className="bg-panel border border-line rounded-xl p-4 shadow-card flex flex-col justify-between">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-muted">
+                      <div className="w-6 h-6 rounded-md bg-gold-light flex items-center justify-center text-gold">
                         <Clock className="w-3.5 h-3.5" />
                       </div>
                       <span className="text-xs font-semibold text-muted uppercase tracking-wider">
                         Transaction Risk
                       </span>
                     </div>
-                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded border bg-slate-50 text-slate-600 border-slate-200">
+                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded border bg-surface text-muted border-line">
                       PENDING
                     </span>
                   </div>
@@ -669,13 +661,12 @@ export default function App() {
                 </div>
               )}
 
-              {/* Block 3: Transaction Status */}
               <div className="bg-panel border border-line rounded-xl p-4 shadow-card flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-md bg-slate-100 flex items-center justify-center text-muted">
+                    <div className="w-6 h-6 rounded-md bg-gold-light flex items-center justify-center text-gold">
                       {approval ? (
-                        <ShieldAlert className="w-3.5 h-3.5 text-warn" />
+                        <ShieldAlert className="w-3.5 h-3.5 text-gold" />
                       ) : isRunFinished ? (
                         isRunSuccess ? (
                           <CheckCircle2 className="w-3.5 h-3.5 text-pass" />
@@ -683,7 +674,7 @@ export default function App() {
                           <XCircle className="w-3.5 h-3.5 text-fail" />
                         )
                       ) : (
-                        <ShieldCheck className="w-3.5 h-3.5 text-brand" />
+                        <ShieldCheck className="w-3.5 h-3.5 text-gold" />
                       )}
                     </div>
                     <span className="text-xs font-semibold text-muted uppercase tracking-wider">
@@ -693,12 +684,12 @@ export default function App() {
                   <span
                     className={`text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded border ${
                       approval
-                        ? "bg-warn-bg text-warn border-warn-border"
+                        ? "bg-gold-light text-gold-dark border-gold-border"
                         : isRunFinished
                         ? isRunSuccess
                           ? "bg-pass-bg text-pass border-pass-border"
                           : "bg-fail-bg text-fail border-fail-border"
-                        : "bg-slate-100 text-slate-700 border-slate-200"
+                        : "bg-gold-light text-gold border-gold-border"
                     }`}
                   >
                     {approval
@@ -718,7 +709,7 @@ export default function App() {
                     ? "Paused for Approval"
                     : isRunFinished
                     ? isRunSuccess
-                      ? "Transaction Cleared"
+                      ? "Policy Cleared"
                       : "Gate Rejected"
                     : displayRunning
                     ? "Validating Constraints"
@@ -733,13 +724,13 @@ export default function App() {
 
             {/* Run Complete Summary Card */}
             {isRunFinished && (
-              <div className="bg-panel border border-line rounded-xl p-4 sm:p-5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="bg-panel border-2 border-gold-border rounded-xl p-4 sm:p-5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2">
                     <span
                       className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded ${
                         isRunSuccess
-                          ? "bg-pass text-white"
+                          ? "bg-gold text-white"
                           : "bg-fail text-white"
                       }`}
                     >
@@ -768,13 +759,13 @@ export default function App() {
                       </div>
                     )}
                     {orderData?.id && (
-                      <div className="flex items-center gap-1 font-mono text-[11px] text-slate-800 bg-surface px-2 py-0.5 rounded border border-line">
-                        <CreditCard className="w-3 h-3 text-muted" />
+                      <div className="flex items-center gap-1 font-mono text-[11px] text-ink bg-gold-light px-2 py-0.5 rounded border border-gold-border">
+                        <CreditCard className="w-3 h-3 text-gold" />
                         <span>{orderData.id}</span>
                       </div>
                     )}
                     {orderData?.source && (
-                      <span className="text-[11px] font-medium text-slate-600">
+                      <span className="text-[11px] font-medium text-gold-dark">
                         {orderData.source === "razorpay_test_mode"
                           ? "Razorpay Test Mode"
                           : "Mock Mode"}
@@ -787,7 +778,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => exportCurrentTrail(displaySteps)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-surface hover:bg-slate-100 border border-line px-3 py-2 rounded-lg transition-colors shadow-xs"
+                    className="flex items-center gap-1.5 text-xs font-medium text-ink hover:text-gold-hover bg-surface hover:bg-gold-light/60 border border-line hover:border-gold-border px-3 py-2 rounded-lg transition-colors shadow-xs"
                   >
                     <Download className="w-3.5 h-3.5 text-muted" />
                     <span>Export Audit JSON</span>
@@ -810,9 +801,9 @@ export default function App() {
           </div>
         )}
 
-        {/* Main Two-Column Layout */}
+        {/* Two-Column Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Buyer Goal & Policy & Catalog (40-42%) */}
+          {/* Left Column: Goal, Vertical Catalog, and Policy Controls (approx 45%) */}
           <div className="lg:col-span-5">
             <GoalPanel
               goal={goal}
@@ -825,7 +816,7 @@ export default function App() {
             />
           </div>
 
-          {/* Right Column: Live Execution Timeline (58-60%) */}
+          {/* Right Column: Live Execution Timeline (approx 55%) */}
           <div className="lg:col-span-7 lg:sticky lg:top-20">
             <AuditTrail
               steps={displaySteps}
@@ -841,7 +832,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>Custos — The Gated Buyer Agent</span>
           <span className="text-[11px] font-mono opacity-80">
-            Governed AI Commerce · Razorpay Test Mode
+            Governed AI Commerce · White & Gold Edition
           </span>
         </div>
       </footer>
