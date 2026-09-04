@@ -32,59 +32,131 @@ export function exportAuditPdf({
   const contentWidth = pageWidth - margin * 2;
   let y = margin;
 
-  // Helper colors
-  const gold = [199, 125, 46]; // #C77D2E
-  const ink = [28, 25, 23]; // #1C1917
-  const muted = [115, 115, 115]; // #737373
-  const lightBg = [251, 249, 246]; // #FBF9F6
-  const borderCol = [232, 230, 225]; // #E8E6E1
-  const passCol = [46, 125, 91]; // #2E7D5B
-  const failCol = [178, 58, 46]; // #B23A2E
-  const warnCol = [199, 125, 46]; // #C77D2E
+  // Executive Palette Tokens
+  const gold = [199, 125, 46];       // #C77D2E Warm Signature Gold
+  const goldDark = [160, 95, 25];    // #A05F19 High-contrast Gold
+  const ink = [28, 25, 23];          // #1C1917 Deep Stone Ink
+  const slate = [68, 64, 60];        // #44403C Body Detail Slate
+  const muted = [120, 113, 108];     // #78716C Metadata & Footers
+  const lightBg = [252, 250, 247];   // #FCFAF7 Clean Card Fill
+  const borderCol = [231, 229, 224]; // #E7E5E0 Subtle Hairline
+  const passText = [22, 101, 52];    // Green 800
+  const passBg = [240, 253, 244];    // Green 50
+  const passBorder = [187, 247, 208];// Green 200
+  const failText = [153, 27, 27];    // Red 800
+  const failBg = [254, 242, 242];    // Red 50
+  const failBorder = [254, 202, 202];// Red 200
+  const warnText = [161, 98, 7];     // Amber 800
+  const warnBg = [254, 252, 232];    // Amber 50
+  const warnBorder = [254, 240, 138];// Amber 200
+  const infoText = [71, 85, 105];    // Slate 700
+  const infoBg = [248, 250, 252];    // Slate 50
+  const infoBorder = [226, 232, 240];// Slate 200
 
-  const checkPageBreak = (neededHeight: number) => {
-    if (y + neededHeight > pageHeight - 18) {
-      doc.addPage();
-      y = margin;
-      drawHeader();
-    }
-  };
-
-  const drawHeader = () => {
-    // Header bar
+  const drawTableHeader = (startY: number) => {
     doc.setFillColor(gold[0], gold[1], gold[2]);
-    doc.rect(margin, y, contentWidth, 1.5, "F");
-    y += 5;
+    doc.rect(margin, startY, contentWidth, 6.5, "F");
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+
+    const headerBaseline = startY + 4.5;
+    doc.text("#", margin + 2.5, headerBaseline);
+    doc.text("TIME", margin + 9.5, headerBaseline);
+    doc.text("EVENT / STAGE", margin + 27, headerBaseline);
+    doc.text("STATUS", margin + 77, headerBaseline);
+    doc.text("AUDIT RECORD & REASONING DETAILS", margin + 98, headerBaseline);
+  };
+
+  const drawFirstPageHeader = () => {
+    // 1. Top Gold Accent Bar
+    doc.setFillColor(gold[0], gold[1], gold[2]);
+    doc.rect(margin, y, contentWidth, 2.2, "F");
+    y += 8.2; // Generous vertical clearance below top bar to prevent any collision
+
+    // 2. Brand & Title Section
+    const brandRowY = y;
+
+    // Brand Left: CUSTOS
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
     doc.setTextColor(ink[0], ink[1], ink[2]);
-    doc.text("CUSTOS", margin, y);
+    doc.text("CUSTOS", margin, brandRowY + 4.0);
+
+    const brandWidth = doc.getTextWidth("CUSTOS");
+
+    // Vertical Divider between CUSTOS and Tagline
+    doc.setDrawColor(gold[0], gold[1], gold[2]);
+    doc.setLineWidth(0.4);
+    doc.line(margin + brandWidth + 3.5, brandRowY + 0.8, margin + brandWidth + 3.5, brandRowY + 4.2);
+
+    // Tagline: THE GATED BUYER AGENT
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(goldDark[0], goldDark[1], goldDark[2]);
+    doc.text("THE GATED BUYER AGENT", margin + brandWidth + 6.5, brandRowY + 3.8);
+
+    // Header Right: Document Title & Timestamp
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.2);
+    doc.setTextColor(ink[0], ink[1], ink[2]);
+    doc.text("TRANSACTION & AUDIT REPORT", pageWidth - margin, brandRowY + 1.2, { align: "right" });
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(gold[0], gold[1], gold[2]);
-    doc.text("THE GATED BUYER AGENT", margin + 27, y);
-
-    // Right header info
-    doc.setFontSize(8);
+    doc.setFontSize(7.2);
     doc.setTextColor(muted[0], muted[1], muted[2]);
     const dateStr = new Date().toLocaleString("en-IN", {
       dateStyle: "medium",
       timeStyle: "short"
     });
-    doc.text("TRANSACTION & AUDIT REPORT", pageWidth - margin, y - 1, { align: "right" });
-    doc.text(`Generated: ${dateStr}`, pageWidth - margin, y + 3, { align: "right" });
+    doc.text(`Generated: ${dateStr}`, pageWidth - margin, brandRowY + 4.5, { align: "right" });
 
-    y += 7;
+    // 3. Hairline Horizontal Divider
+    y += 7.8;
     doc.setDrawColor(borderCol[0], borderCol[1], borderCol[2]);
-    doc.setLineWidth(0.3);
+    doc.setLineWidth(0.25);
     doc.line(margin, y, pageWidth - margin, y);
-    y += 5;
+    y += 5.2;
+  };
+
+  const drawContinuationHeader = () => {
+    // Top Accent Bar
+    doc.setFillColor(gold[0], gold[1], gold[2]);
+    doc.rect(margin, y, contentWidth, 1.6, "F");
+    y += 6.0;
+
+    // Compact Continuation Title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(ink[0], ink[1], ink[2]);
+    doc.text("CUSTOS - AUDIT TRAIL (CONTINUED)", margin, y + 1.5);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.2);
+    doc.setTextColor(muted[0], muted[1], muted[2]);
+    doc.text("Certified Transaction Log", pageWidth - margin, y + 1.5, { align: "right" });
+
+    y += 4.5;
+    doc.setDrawColor(borderCol[0], borderCol[1], borderCol[2]);
+    doc.setLineWidth(0.2);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 4.0;
+
+    drawTableHeader(y);
+    y += 6.5;
+  };
+
+  const checkPageBreak = (neededHeight: number) => {
+    if (y + neededHeight > pageHeight - 18) {
+      doc.addPage();
+      y = margin;
+      drawContinuationHeader();
+    }
   };
 
   // 1. Render First Page Header
-  drawHeader();
+  drawFirstPageHeader();
 
   // Extract metadata from steps if not explicitly provided
   const goalStep = steps.find((s) => s.event === "goal_received");
@@ -102,162 +174,196 @@ export function exportAuditPdf({
     : "N/A";
 
   const doneStep = steps.find((s) => s.event === "done");
-  const resolvedTotal = total ?? (doneStep?.raw as any)?.total ?? rawOrder ? (rawOrder?.amount ? rawOrder.amount / 100 : 0) : 0;
+  const resolvedTotal = total ?? (doneStep?.raw as any)?.total ?? (rawOrder?.amount ? rawOrder.amount / 100 : 0);
 
   const isSuccess = steps.some((s) => s.event === "done");
   const isFailed = steps.some((s) => ["flow_stopped", "agent_stopped", "order_rejected", "error"].includes(s.event));
   const resolvedStatus = status || (isSuccess ? "APPROVED & EXECUTED" : isFailed ? "GATE REJECTED / HALTED" : "IN PROGRESS");
 
-  // 2. Executive Summary Card
+  // 2. Executive Summary Card with dynamic goal height
+  const goalLabel = "Shopping Goal:";
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.8);
+  const goalLabelW = doc.getTextWidth(goalLabel);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.8);
+  const maxGoalW = contentWidth - goalLabelW - 14;
+  const goalLines = doc.splitTextToSize(`"${resolvedGoal}"`, maxGoalW);
+  const goalHeight = Math.max(4.2, goalLines.length * 3.8);
+  const cardHeight = 25.5 + goalHeight;
+
   doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
   doc.setDrawColor(borderCol[0], borderCol[1], borderCol[2]);
-  doc.setLineWidth(0.4);
-  doc.roundedRect(margin, y, contentWidth, 34, 2, 2, "FD");
+  doc.setLineWidth(0.3);
+  doc.roundedRect(margin, y, contentWidth, cardHeight, 1.8, 1.8, "FD");
 
-  // Title in summary box
+  // Summary Card Title
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(gold[0], gold[1], gold[2]);
-  doc.text("EXECUTIVE TRANSACTION SUMMARY", margin + 4, y + 6);
+  doc.setFontSize(8.2);
+  doc.setTextColor(goldDark[0], goldDark[1], goldDark[2]);
+  doc.text("EXECUTIVE TRANSACTION SUMMARY", margin + 4.5, y + 5.2);
 
-  // Goal row
+  // Goal Row
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
+  doc.setFontSize(7.8);
   doc.setTextColor(ink[0], ink[1], ink[2]);
-  doc.text("Shopping Goal:", margin + 4, y + 12);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(muted[0], muted[1], muted[2]);
-  const splitGoal = doc.splitTextToSize(`"${resolvedGoal}"`, contentWidth - 40);
-  doc.text(splitGoal[0], margin + 28, y + 12);
+  doc.text(goalLabel, margin + 4.5, y + 9.8);
 
-  // Key metrics 4-column layout
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(slate[0], slate[1], slate[2]);
+  goalLines.forEach((line: string, idx: number) => {
+    doc.text(line, margin + 4.5 + goalLabelW + 2.5, y + 9.8 + idx * 3.8);
+  });
+
+  // Inner Divider Line
+  const metricY = y + 10.0 + goalHeight;
+  doc.setDrawColor(borderCol[0], borderCol[1], borderCol[2]);
+  doc.setLineWidth(0.2);
+  doc.line(margin + 4.5, metricY - 2.2, margin + contentWidth - 4.5, metricY - 2.2);
+
+  // 4 Metrics Grid
   const colW = contentWidth / 4;
-  const metY = y + 19;
 
-  // Metric 1: Committed Spend
+  // Vertical Separators
+  for (let c = 1; c < 4; c++) {
+    const sepX = margin + c * colW;
+    doc.line(sepX, metricY - 0.5, sepX, metricY + 11);
+  }
+
+  // Col 1: Committed Spend
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
+  doc.setFontSize(6.8);
   doc.setTextColor(muted[0], muted[1], muted[2]);
-  doc.text("COMMITTED SPEND", margin + 4, metY);
+  doc.text("COMMITTED SPEND", margin + 4.5, metricY + 1.2);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(ink[0], ink[1], ink[2]);
-  doc.text(`Rs. ${resolvedTotal}`, margin + 4, metY + 5);
-  doc.setFontSize(7.5);
+  const formattedTotal = typeof resolvedTotal === "number" ? resolvedTotal.toLocaleString("en-IN") : resolvedTotal;
+  doc.text(`Rs. ${formattedTotal}`, margin + 4.5, metricY + 6.2);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.8);
   doc.setTextColor(muted[0], muted[1], muted[2]);
-  doc.text(`Budget: Rs. ${resolvedBudget}`, margin + 4, metY + 9);
+  doc.text(`Budget: Rs. ${resolvedBudget}`, margin + 4.5, metricY + 10.0);
 
-  // Metric 2: Policy Status
+  // Col 2: Policy Status
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
+  doc.setFontSize(6.8);
   doc.setTextColor(muted[0], muted[1], muted[2]);
-  doc.text("POLICY STATUS", margin + colW + 4, metY);
+  doc.text("POLICY STATUS", margin + colW + 4.5, metricY + 1.2);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.5);
   if (isSuccess) {
-    doc.setTextColor(passCol[0], passCol[1], passCol[2]);
-    doc.text("✓ Approved", margin + colW + 4, metY + 5);
+    doc.setTextColor(passText[0], passText[1], passText[2]);
+    doc.text("APPROVED", margin + colW + 4.5, metricY + 6.2);
   } else if (isFailed) {
-    doc.setTextColor(failCol[0], failCol[1], failCol[2]);
-    doc.text("✕ Stopped", margin + colW + 4, metY + 5);
+    doc.setTextColor(failText[0], failText[1], failText[2]);
+    doc.text("STOPPED", margin + colW + 4.5, metricY + 6.2);
   } else {
-    doc.setTextColor(warnCol[0], warnCol[1], warnCol[2]);
-    doc.text(resolvedStatus, margin + colW + 4, metY + 5);
+    doc.setTextColor(warnText[0], warnText[1], warnText[2]);
+    const shortStatus = resolvedStatus.length > 14 ? resolvedStatus.slice(0, 14) : resolvedStatus;
+    doc.text(shortStatus, margin + colW + 4.5, metricY + 6.2);
   }
-  doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.8);
   doc.setTextColor(muted[0], muted[1], muted[2]);
-  doc.text("Dual-Gate Verified", margin + colW + 4, metY + 9);
+  doc.text("Dual-Gate Verified", margin + colW + 4.5, metricY + 10.0);
 
-  // Metric 3: Risk Score
+  // Col 3: Risk Matrix
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
+  doc.setFontSize(6.8);
   doc.setTextColor(muted[0], muted[1], muted[2]);
-  doc.text("TRANSACTION RISK", margin + colW * 2 + 4, metY);
+  doc.text("TRANSACTION RISK", margin + colW * 2 + 4.5, metricY + 1.2);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   if (risk) {
-    doc.setTextColor(risk.level === "low" ? passCol[0] : risk.level === "medium" ? warnCol[0] : failCol[0], risk.level === "low" ? passCol[1] : risk.level === "medium" ? warnCol[1] : failCol[1], risk.level === "low" ? passCol[2] : risk.level === "medium" ? warnCol[2] : failCol[2]);
-    doc.text(`${risk.score}/100 (${risk.level.toUpperCase()})`, margin + colW * 2 + 4, metY + 5);
+    const riskColor = risk.level === "low" ? passText : risk.level === "medium" ? warnText : failText;
+    doc.setTextColor(riskColor[0], riskColor[1], riskColor[2]);
+    doc.text(`${risk.score}/100 (${risk.level.toUpperCase()})`, margin + colW * 2 + 4.5, metricY + 6.2);
   } else {
-    doc.setTextColor(muted[0], muted[1], muted[2]);
-    doc.text("30/100 (LOW)", margin + colW * 2 + 4, metY + 5);
+    doc.setTextColor(passText[0], passText[1], passText[2]);
+    doc.text("30/100 (LOW)", margin + colW * 2 + 4.5, metricY + 6.2);
   }
-  doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.8);
   doc.setTextColor(muted[0], muted[1], muted[2]);
-  doc.text("Autonomous Risk Matrix", margin + colW * 2 + 4, metY + 9);
+  doc.text("Deterministic Matrix", margin + colW * 2 + 4.5, metricY + 10.0);
 
-  // Metric 4: Order ID
+  // Col 4: Order ID
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
+  doc.setFontSize(6.8);
   doc.setTextColor(muted[0], muted[1], muted[2]);
-  doc.text("ORDER REFERENCE", margin + colW * 3 + 4, metY);
+  doc.text("ORDER REFERENCE", margin + colW * 3 + 4.5, metricY + 1.2);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
+  doc.setFontSize(8.0);
   doc.setTextColor(ink[0], ink[1], ink[2]);
-  const shortOrder = resolvedOrder.length > 15 ? resolvedOrder.slice(0, 15) + "…" : resolvedOrder;
-  doc.text(shortOrder, margin + colW * 3 + 4, metY + 5);
-  doc.setFontSize(7.5);
+  const shortOrder = resolvedOrder.length > 15 ? resolvedOrder.slice(0, 15) + "..." : resolvedOrder;
+  doc.text(shortOrder, margin + colW * 3 + 4.5, metricY + 6.2);
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.8);
   doc.setTextColor(muted[0], muted[1], muted[2]);
-  doc.text(resolvedSource, margin + colW * 3 + 4, metY + 9);
+  doc.text(resolvedSource, margin + colW * 3 + 4.5, metricY + 10.0);
 
-  y += 38;
+  y += cardHeight + 5.5;
 
   // 3. Dual-Policy Governance Controls Checklist
-  checkPageBreak(22);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(ink[0], ink[1], ink[2]);
-  doc.text("ENFORCED GOVERNANCE POLICY CHECKS", margin, y);
-  y += 3;
+  checkPageBreak(25);
+  doc.setFillColor(gold[0], gold[1], gold[2]);
+  doc.rect(margin, y - 2.2, 2.2, 2.2, "F");
 
-  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.2);
+  doc.setTextColor(ink[0], ink[1], ink[2]);
+  doc.text("ENFORCED GOVERNANCE POLICY CHECKS", margin + 4.0, y);
+  y += 3.5;
+
+  const govBoxH = 18.5;
+  doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
+  doc.setDrawColor(borderCol[0], borderCol[1], borderCol[2]);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(margin, y, contentWidth, govBoxH, 1.8, 1.8, "FD");
+
   const rules = [
-    "01. Budget Cap: Spend strictly verified within stated budget limit.",
-    "02. Stock Verification: Out-of-stock items automatically substituted or dropped.",
-    "03. Discount Limits: Item discounts bounded to merchant authorized caps.",
-    "04. Bounded Revision: Exactly 1 autonomous retry allowed on gate failure.",
-    "05. Merchant Guardrails: Category restrictions & human approval enforced."
+    { title: "01. Budget Cap:", desc: "Spend strictly verified within stated budget limit.", col: 0, row: 0 },
+    { title: "02. Stock Verification:", desc: "Out-of-stock items substituted or dropped.", col: 0, row: 1 },
+    { title: "03. Discount Limits:", desc: "Item discounts bounded to merchant caps.", col: 0, row: 2 },
+    { title: "04. Bounded Revision:", desc: "Exactly 1 autonomous retry on gate failure.", col: 1, row: 0 },
+    { title: "05. Merchant Guardrails:", desc: "Category limits & manual approval enforced.", col: 1, row: 1 },
+    { title: "06. Gated Payment:", desc: "User checkout & server signature verification.", col: 1, row: 2 }
   ];
 
-  doc.setFillColor(lightBg[0], lightBg[1], lightBg[2]);
-  doc.rect(margin, y, contentWidth, 14, "F");
-  doc.setDrawColor(borderCol[0], borderCol[1], borderCol[2]);
-  doc.rect(margin, y, contentWidth, 14, "D");
+  const colWidthGov = contentWidth / 2;
+  rules.forEach((r) => {
+    const rX = margin + 4.5 + r.col * (colWidthGov + 2);
+    const rY = y + 4.8 + r.row * 4.8;
 
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(ink[0], ink[1], ink[2]);
-  doc.text(rules[0], margin + 3, y + 4.5);
-  doc.text(rules[1], margin + 3, y + 8.5);
-  doc.text(rules[2], margin + 3, y + 12.5);
-  doc.text(rules[3], margin + 100, y + 4.5);
-  doc.text(rules[4], margin + 100, y + 8.5);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.0);
+    doc.setTextColor(ink[0], ink[1], ink[2]);
+    doc.text(r.title, rX, rY);
 
-  y += 18;
+    const titleW = doc.getTextWidth(r.title);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.8);
+    doc.setTextColor(slate[0], slate[1], slate[2]);
+    doc.text(r.desc, rX + titleW + 1.5, rY);
+  });
 
-  // 4. Chronological Audit Log Table
-  checkPageBreak(20);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.5);
-  doc.setTextColor(ink[0], ink[1], ink[2]);
-  doc.text("CHRONOLOGICAL EXECUTION AUDIT TRAIL", margin, y);
-  y += 4;
+  y += govBoxH + 5.5;
 
-  // Table Header
+  // 4. Chronological Execution Audit Trail
+  checkPageBreak(25);
   doc.setFillColor(gold[0], gold[1], gold[2]);
-  doc.rect(margin, y, contentWidth, 6, "F");
+  doc.rect(margin, y - 2.2, 2.2, 2.2, "F");
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.setTextColor(255, 255, 255);
-  doc.text("#", margin + 2, y + 4.2);
-  doc.text("TIME", margin + 8, y + 4.2);
-  doc.text("EVENT / STAGE", margin + 26, y + 4.2);
-  doc.text("STATUS", margin + 78, y + 4.2);
-  doc.text("AUDIT RECORD & REASONING DETAILS", margin + 98, y + 4.2);
-  y += 6;
+  doc.setFontSize(8.2);
+  doc.setTextColor(ink[0], ink[1], ink[2]);
+  doc.text("CHRONOLOGICAL EXECUTION AUDIT TRAIL", margin + 4.0, y);
+  y += 3.5;
+
+  drawTableHeader(y);
+  y += 6.5;
 
   // Table Rows
   steps.forEach((step, index) => {
@@ -265,20 +371,20 @@ export function exportAuditPdf({
     let detailText = "";
 
     if (step.event === "goal_received") {
-      detailText = `Goal: "${rawData?.goal || ""}" | Budget: Rs. ${rawData?.budget || "None"}`;
+      detailText = `Goal: "${rawData?.goal || ""}" | Stated Budget: Rs. ${rawData?.budget || "None"}`;
     } else if (step.event === "catalog_fetched") {
-      detailText = `${rawData?.count || "12"} merchant SKUs loaded into candidate pool.`;
+      detailText = `${rawData?.count || "12"} merchant catalog SKUs loaded into candidate pool.`;
     } else if (step.event === "goal_interpreted") {
       detailText = rawData?.reason || (rawData?.categories ? `Restricted to ${rawData.categories.join(", ")}` : "All categories eligible");
     } else if (step.event === "cart_proposed") {
       const items = (rawData?.cart || []).map((c: any) => `${c.id} (qty ${c.qty})`).join(", ");
-      detailText = `Cart Total: Rs. ${rawData?.total_estimated || 0} | Proposed: ${items || "items selected"}`;
+      detailText = `${rawData?.revised ? "Revised Cart" : "Proposed Cart"} (Total: Rs. ${rawData?.total_estimated || 0}) | Items: ${items || "selected"}`;
     } else if (step.event === "stock_check") {
       const issues = (rawData?.checks || []).map((c: any) => c.reason).join("; ");
       detailText = `Stock check failed: ${issues}`;
     } else if (step.event === "substitution") {
       const subs = (rawData?.substitutions || []).map((s: any) => `${s.original} -> ${s.replacement}`).join("; ");
-      detailText = `Substitutions applied: ${subs}`;
+      detailText = `Out-of-stock substitution applied: ${subs}`;
     } else if (step.event === "policy_check") {
       detailText = `Attempt ${rawData?.attempt || 1}: ${rawData?.reason || ""} (Total: Rs. ${rawData?.total || "N/A"})`;
     } else if (step.event === "merchant_policy_check") {
@@ -286,23 +392,44 @@ export function exportAuditPdf({
     } else if (step.event === "revision_started") {
       detailText = `Revision triggered: ${rawData?.reason || "Cart adjusted within budget constraints"}`;
     } else if (step.event === "risk_assessed") {
-      detailText = `Score: ${rawData?.score}/100 (${String(rawData?.level).toUpperCase()}). Factors: ${(rawData?.reasons || []).join("; ")}`;
+      detailText = `Risk Score: ${rawData?.score}/100 (${String(rawData?.level).toUpperCase()}). Signals: ${(rawData?.reasons || []).join("; ")}`;
     } else if (step.event === "approval_required") {
-      detailText = `Manual review required: ${rawData?.reason || ""}`;
+      detailText = `Human review required: ${rawData?.reason || ""}`;
     } else if (step.event === "approval_granted") {
       detailText = `Approved by authorized human operator for Rs. ${rawData?.total || 0}.`;
     } else if (step.event === "order_created") {
-      detailText = `Payment order ${rawData?.order?.id || ""} created via ${rawData?.order?.source || "Razorpay Test Mode"}. Amount: Rs. ${((rawData?.order?.amount || 0) / 100).toFixed(2)}`;
+      detailText = `Order ${rawData?.order?.id || ""} created via ${rawData?.order?.source === "razorpay_test_mode" ? "Razorpay Test Mode" : "Mock Mode"}. Amount: Rs. ${((rawData?.order?.amount || 0) / 100).toFixed(2)}`;
+    } else if (step.event === "awaiting_payment") {
+      detailText = `Governance cleared. System paused awaiting user test payment authorization.`;
+    } else if (step.event === "payment_initiated") {
+      detailText = `User initiated Razorpay Test Mode checkout. Modal opened.`;
+    } else if (step.event === "payment_verification_started") {
+      detailText = `Cryptographic payment signature verification started with backend.`;
+    } else if (step.event === "payment_verified") {
+      detailText = `Signature verified via HMAC-SHA256 timingSafeEqual. Payment ID: ${rawData?.payment_id || ""}`;
+    } else if (step.event === "payment_cancelled") {
+      detailText = `Payment cancelled by user. Modal dismissed without completing payment.`;
+    } else if (step.event === "payment_failed") {
+      detailText = `Razorpay payment failed: ${rawData?.reason || "Payment could not be completed."}`;
+    } else if (step.event === "agent_stopped") {
+      detailText = `Emergency kill switch engaged. Execution halted immediately.`;
+    } else if (step.event === "order_rejected") {
+      detailText = `Human operator rejected the purchase. No order or payment executed.`;
+    } else if (step.event === "flow_stopped") {
+      detailText = `Bounded revision limit reached. Flow stopped safely without ordering.`;
     } else if (step.event === "done") {
-      detailText = `Flow complete. Order reference: ${rawData?.orderId || ""}. Total: Rs. ${rawData?.total || 0}`;
+      detailText = rawData?.paymentId
+        ? `Flow complete. Payment ${rawData.paymentId} verified server-side. Order: ${rawData.orderId}. Total: Rs. ${rawData.total}`
+        : `Flow complete. Order placed: ${rawData?.orderId || ""}. Total: Rs. ${rawData?.total || 0}`;
     } else {
       detailText = step.label;
     }
 
-    const lines = doc.splitTextToSize(detailText, contentWidth - 100);
-    const rowHeight = Math.max(7, lines.length * 3.5 + 3);
+    const detailColWidth = contentWidth - 98;
+    const lines = doc.splitTextToSize(detailText, detailColWidth - 4);
+    const rowHeight = Math.max(7.2, lines.length * 3.6 + 3.8);
 
-    checkPageBreak(rowHeight + 4);
+    checkPageBreak(rowHeight + 1.5);
 
     // Alternate row background
     if (index % 2 === 1) {
@@ -310,55 +437,80 @@ export function exportAuditPdf({
       doc.rect(margin, y, contentWidth, rowHeight, "F");
     }
 
-    // Border
+    // Row bottom hairline border
     doc.setDrawColor(borderCol[0], borderCol[1], borderCol[2]);
     doc.setLineWidth(0.15);
     doc.line(margin, y + rowHeight, margin + contentWidth, y + rowHeight);
 
-    // Step index
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(muted[0], muted[1], muted[2]);
-    doc.text(String(index + 1).padStart(2, "0"), margin + 2, y + 4.5);
+    const baseY = y + 4.4;
 
-    // Time
+    // 1. Step index
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.8);
+    doc.setTextColor(muted[0], muted[1], muted[2]);
+    doc.text(String(index + 1).padStart(2, "0"), margin + 2.5, baseY);
+
+    // 2. Time
     let timeFormatted = "";
     try {
       timeFormatted = new Date(step.timestamp).toLocaleTimeString("en-IN", { hour12: false });
     } catch {
       timeFormatted = "--:--:--";
     }
-    doc.text(timeFormatted, margin + 8, y + 4.5);
+    doc.text(timeFormatted, margin + 9.5, baseY);
 
-    // Label
+    // 3. Stage Label
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.2);
+    doc.setFontSize(7.0);
     doc.setTextColor(ink[0], ink[1], ink[2]);
-    const cleanLabel = step.label.length > 28 ? step.label.slice(0, 28) + "…" : step.label;
-    doc.text(cleanLabel, margin + 26, y + 4.5);
+    const cleanLabel = step.label.length > 32 ? step.label.slice(0, 31) + "..." : step.label;
+    doc.text(cleanLabel, margin + 27, baseY);
 
-    // Status Pill
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.5);
+    // 4. Status Badge Pill
+    const pillW = 14;
+    const pillH = 4.0;
+    const pillX = margin + 77;
+    const pillY = y + 1.6;
+
+    let bText = "INFO";
+    let bBg = infoBg;
+    let bBorder = infoBorder;
+    let bTextColor = infoText;
+
     if (step.status === "pass") {
-      doc.setTextColor(passCol[0], passCol[1], passCol[2]);
-      doc.text("✓ PASS", margin + 78, y + 4.5);
+      bText = "PASS";
+      bBg = passBg;
+      bBorder = passBorder;
+      bTextColor = passText;
     } else if (step.status === "fail") {
-      doc.setTextColor(failCol[0], failCol[1], failCol[2]);
-      doc.text("✕ FAIL", margin + 78, y + 4.5);
+      bText = "FAIL";
+      bBg = failBg;
+      bBorder = failBorder;
+      bTextColor = failText;
     } else if (step.status === "warn") {
-      doc.setTextColor(warnCol[0], warnCol[1], warnCol[2]);
-      doc.text("⚠ WARN", margin + 78, y + 4.5);
-    } else {
-      doc.setTextColor(muted[0], muted[1], muted[2]);
-      doc.text("● INFO", margin + 78, y + 4.5);
+      bText = "WARN";
+      bBg = warnBg;
+      bBorder = warnBorder;
+      bTextColor = warnText;
     }
 
-    // Detail text
+    doc.setFillColor(bBg[0], bBg[1], bBg[2]);
+    doc.setDrawColor(bBorder[0], bBorder[1], bBorder[2]);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(pillX, pillY, pillW, pillH, 0.8, 0.8, "FD");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.0);
+    doc.setTextColor(bTextColor[0], bTextColor[1], bTextColor[2]);
+    doc.text(bText, pillX + pillW / 2, pillY + 2.9, { align: "center" });
+
+    // 5. Detail text lines
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.8);
-    doc.setTextColor(ink[0], ink[1], ink[2]);
-    doc.text(lines, margin + 98, y + 3.8);
+    doc.setTextColor(slate[0], slate[1], slate[2]);
+    lines.forEach((line: string, lIdx: number) => {
+      doc.text(line, margin + 98, baseY + lIdx * 3.6);
+    });
 
     y += rowHeight;
   });
@@ -369,20 +521,21 @@ export function exportAuditPdf({
     doc.setPage(i);
     doc.setDrawColor(borderCol[0], borderCol[1], borderCol[2]);
     doc.setLineWidth(0.2);
-    doc.line(margin, pageHeight - 9, pageWidth - margin, pageHeight - 9);
+    doc.line(margin, pageHeight - 9.5, pageWidth - margin, pageHeight - 9.5);
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
+    doc.setFontSize(6.8);
     doc.setTextColor(muted[0], muted[1], muted[2]);
     doc.text(
-      "Custos Governance Engine · Certified Autonomous Transaction Audit Trail",
+      "Custos Governance Engine  |  Certified Autonomous Transaction Audit Trail",
       margin,
-      pageHeight - 5
+      pageHeight - 5.2
     );
-    doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 5, { align: "right" });
+    doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 5.2, { align: "right" });
   }
 
   // Save the PDF
   const filename = `custos-audit-report-${Date.now()}.pdf`;
   doc.save(filename);
 }
+
