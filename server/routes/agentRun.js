@@ -5,7 +5,7 @@ import { runBuyerAgent, interpretGoal } from "../agent.js";
 import { runPolicyGate } from "../policy.js";
 import { createOrder } from "../order.js";
 import { computeRiskScore } from "../risk.js";
-import { createRun, isStopped, waitForApproval, cleanupRun } from "../runState.js";
+import { createRun, isStopped, waitForApproval, cleanupRun, registerSender, waitForPayment } from "../runState.js";
 
 const router = express.Router();
 
@@ -17,13 +17,6 @@ const DEFAULT_APPROVAL_THRESHOLD = 1200;
 function send(res, event, data) {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify({ ...data, timestamp: new Date().toISOString() })}\n\n`);
-}
-
-function cartTotal(cart, catalog) {
-  return cart.reduce((sum, c) => {
-    const p = catalog.find((x) => x.id === c.id);
-    return sum + (p ? p.price * c.qty : 0);
-  }, 0);
 }
 
 // Checks the Emergency Kill Switch. If it's been pressed, sends the
@@ -41,95 +34,34 @@ function stoppedOrContinue(runId, res) {
   return false;
 }
 
-// Runs the out-of-stock substitution pass over a proposed cart.
-//
-// blockedSkuIds is a Set shared across the WHOLE run (initial proposal +
-// revision), not just this one call. Once a SKU is found out-of-stock, its
-// id is added here — this is what a product has "been detected as out of
-// stock" means for the rest of the run. Combined with runBuyerAgent()
-// excluding blockedSkuIds from its candidate pool, a SKU that has already
-// been substituted or dropped can never be proposed, substituted, or
-// counted again in the same run.
-//
-// substitutedOriginalIds is a separate Set — only original SKUs that were
-// SUCCESSFULLY substituted (not dropped) go in here, and its .size is the
-// single source of truth for "how many items were substituted", used for
-// both the audit trail text and the risk score. This is what stops the
-// same Masala Makhana → Trail Mix swap from ever being counted twice.
-function applySubstitutions(cart, rejected, blockedSkuIds, substitutedOriginalIds, catalog) {
+// Runs the out-of-stock substitution pass over a proposed cart. Used after
+// EVERY proposal (initial and revised) so a revision can never silently
+// reintroduce an out-of-stock item.
+function applySubstitutions(cart, rejected) {
   const substitutions = [];
-  const stockChecks = [];
   let nextCart = [...cart];
   let nextRejected = [...rejected];
 
   for (const line of cart) {
     const product = findById(line.id);
     if (product && product.stock === 0) {
-      stockChecks.push({ product: product.name, reason: `${product.name} is out of stock.` });
-      nextCart = nextCart.filter((c) => c.id !== line.id);
-
-      // Defensive: this SKU was already handled earlier in this run. It
-      // shouldn't be possible to reach this branch again (runBuyerAgent's
-      // pool exclusion prevents it from being proposed at all), but if it
-      // ever is, never re-substitute or re-count it.
-      if (blockedSkuIds.has(line.id)) {
-        continue;
-      }
-      blockedSkuIds.add(line.id);
-
       const currentIds = nextCart.map((c) => c.id);
       const sub = findSubstitute(line.id, currentIds);
+      nextCart = nextCart.filter((c) => c.id !== line.id);
       if (sub) {
         substitutions.push({
           original: product.name,
-          originalId: product.id,
           replacement: sub.name,
-          replacementId: sub.id,
-          reason: `${product.name} (₹${product.price}) is out of stock. ${sub.name} (₹${sub.price}) is an in-category, in-stock alternative.`
+          reason: `${product.name} is out of stock; ${sub.name} is the nearest in-stock item in the same category.`
         });
-        substitutedOriginalIds.add(product.id);
         nextCart.push({ id: sub.id, qty: line.qty, reason: `Substituted for out-of-stock ${product.name}.` });
       } else {
-        nextRejected.push({
-          id: line.id,
-          reason: `${product.name} out of stock, no in-category substitute available. Item dropped.`
-        });
+        nextRejected.push({ id: line.id, reason: `${product.name} out of stock, no in-category substitute available.` });
       }
     }
   }
 
-  return { cart: nextCart, rejected: nextRejected, substitutions, stockChecks };
-}
-
-// Used specifically when the gate fails BECAUSE a substitution already made
-// in this attempt pushed the cart over budget. Rather than discarding that
-// substitution and regenerating an unrelated cart from scratch, this trims
-// the CURRENT cart — removing the most expensive item not already part of
-// the substitution — until it fits. This preserves the valid substitution
-// through the one bounded revision instead of losing it.
-function trimCartToFitBudget(cart, budget, catalog, preserveIds) {
-  let working = [...cart];
-  const removed = [];
-
-  const total = () => cartTotal(working, catalog);
-
-  while (total() > budget) {
-    const removable = working
-      .filter((c) => !preserveIds.includes(c.id))
-      .map((c) => ({ line: c, price: (catalog.find((x) => x.id === c.id)?.price || 0) * c.qty }))
-      .sort((a, b) => b.price - a.price);
-
-    if (removable.length === 0) break; // nothing left we're allowed to remove
-    const { line, price } = removable[0];
-    working = working.filter((c) => c.id !== line.id);
-    const p = catalog.find((x) => x.id === line.id);
-    removed.push({
-      id: line.id,
-      reason: `${p ? p.name : line.id} (₹${price}) removed to bring the substituted cart back within the ₹${budget} budget.`
-    });
-  }
-
-  return { cart: working, removed, total: total() };
+  return { cart: nextCart, rejected: nextRejected, substitutions };
 }
 
 // Runs the combined policy gate (user rules + merchant rules) for one
@@ -163,11 +95,7 @@ router.get("/agent/run", async (req, res) => {
   });
 
   createRun(runId);
-
-  // Run-scoped state — a SKU discovered out of stock, or an original SKU
-  // successfully substituted, is remembered for the rest of THIS run only.
-  const blockedSkuIds = new Set();
-  const substitutedOriginalIds = new Set();
+  registerSender(runId, (event, data) => send(res, event, data));
 
   try {
     const catalog = getCatalog();
@@ -199,15 +127,13 @@ router.get("/agent/run", async (req, res) => {
     if (stoppedOrContinue(runId, res)) return;
     send(res, "cart_proposed", { cart: proposal.cart, rejected: proposal.rejected, total_estimated: proposal.total_estimated });
 
-    // --- Step 2: stock check + out-of-stock substitution pass (before policy check)
-    let subResult = applySubstitutions(proposal.cart, proposal.rejected, blockedSkuIds, substitutedOriginalIds, catalog);
+    // --- Step 2: out-of-stock substitution pass (before policy check)
+    let subResult = applySubstitutions(proposal.cart, proposal.rejected);
     proposal.cart = subResult.cart;
     proposal.rejected = subResult.rejected;
-    if (subResult.stockChecks.length) {
-      send(res, "stock_check", { checks: subResult.stockChecks });
-    }
-    if (subResult.substitutions.length) {
-      send(res, "substitution", { substitutions: subResult.substitutions, newTotal: cartTotal(proposal.cart, catalog) });
+    let substitutionsCount = subResult.substitutions.length;
+    if (substitutionsCount) {
+      send(res, "substitution", { substitutions: subResult.substitutions });
     }
 
     if (stoppedOrContinue(runId, res)) return;
@@ -221,48 +147,18 @@ router.get("/agent/run", async (req, res) => {
 
       const failReason = gate.stage === "user" ? gate.userResult.reason : gate.merchantResult.reason;
       send(res, "revision_started", { reason: failReason, stage: gate.stage });
-
-      if (subResult.substitutions.length > 0 && gate.stage === "user") {
-        // The gate failed because a substitution made in this attempt
-        // pushed the cart over budget. Trim the CURRENT cart instead of
-        // regenerating a fresh one — this keeps the valid substitution
-        // (and structurally cannot re-select the now-blocked original SKU,
-        // since it's already been removed from the cart entirely).
-        const preserveIds = subResult.substitutions.map((s) => s.replacementId);
-        const trimResult = trimCartToFitBudget(proposal.cart, resolvedBudget, catalog, preserveIds);
-        // Drop any stale "rejected" entry left over from the ORIGINAL
-        // proposal for an id that is now actually IN the cart (e.g. Trail
-        // Mix was skipped for being too expensive before it became the
-        // substitute) — otherwise the same id shows as both ✓ selected and
-        // ✕ skipped in the same revised-cart step, which is exactly the
-        // kind of contradictory audit event this fix pass is about removing.
-        const finalCartIds = new Set(trimResult.cart.map((c) => c.id));
-        proposal = {
-          cart: trimResult.cart,
-          rejected: [...proposal.rejected.filter((r) => !finalCartIds.has(r.id)), ...trimResult.removed],
-          total_estimated: trimResult.total
-        };
-      } else {
-        // Plain budget/merchant-policy miss with no substitution involved —
-        // regenerate, still excluding every SKU blocked so far this run.
-        proposal = await runBuyerAgent(goal, catalog, resolvedBudget, failReason, [...blockedSkuIds]);
-      }
-
+      proposal = await runBuyerAgent(goal, catalog, resolvedBudget, failReason);
       if (stoppedOrContinue(runId, res)) return;
       send(res, "cart_proposed", { revised: true, cart: proposal.cart, rejected: proposal.rejected, total_estimated: proposal.total_estimated });
 
       // Re-run the substitution pass on the revised cart too — a revision
       // must never be allowed to silently reintroduce an out-of-stock item.
-      // (blockedSkuIds/substitutedOriginalIds carry over from the initial
-      // pass, so an already-handled SKU can never be double-counted here.)
-      subResult = applySubstitutions(proposal.cart, proposal.rejected, blockedSkuIds, substitutedOriginalIds, catalog);
+      subResult = applySubstitutions(proposal.cart, proposal.rejected);
       proposal.cart = subResult.cart;
       proposal.rejected = subResult.rejected;
-      if (subResult.stockChecks.length) {
-        send(res, "stock_check", { revised: true, checks: subResult.stockChecks });
-      }
+      substitutionsCount += subResult.substitutions.length;
       if (subResult.substitutions.length) {
-        send(res, "substitution", { revised: true, substitutions: subResult.substitutions, newTotal: cartTotal(proposal.cart, catalog) });
+        send(res, "substitution", { revised: true, substitutions: subResult.substitutions });
       }
 
       if (stoppedOrContinue(runId, res)) return;
@@ -270,12 +166,11 @@ router.get("/agent/run", async (req, res) => {
       gate = runGateAndEmit(proposal.cart, resolvedBudget, catalog, 2, res);
     }
 
-    // --- Step 5: stop gracefully if still failing — no silent failure, no
-    // infinite loop, no attempt 3, ever.
+    // --- Step 5: stop gracefully if still failing — no silent failure, no infinite loop
     if (!gate.passed) {
       const failReason = gate.stage === "user" ? gate.userResult.reason : gate.merchantResult.reason;
       send(res, "flow_stopped", {
-        reason: `Maximum bounded revision count reached (gate failed twice — ${gate.stage} policy). No further autonomous attempts permitted. Last reason: ${failReason}`
+        reason: `Gate failed twice (${gate.stage} policy). Stopping — this is the bounded-retry rule, not an error. Last reason: ${failReason}`
       });
       cleanupRun(runId);
       res.end();
@@ -286,24 +181,19 @@ router.get("/agent/run", async (req, res) => {
 
     // --- Step 6: risk score — explanatory only, computed on the cart that
     // already cleared BOTH policy gates. Never blocks anything by itself.
-    // substitutedOriginalIds.size is the UNIQUE substitution count for the
-    // whole run — this is what fixes "2 items were substituted" showing up
-    // for what was actually one SKU substituted once.
     const risk = computeRiskScore({
       cart: proposal.cart,
       catalog,
       total: gate.total,
       budget: resolvedBudget,
-      substitutionsCount: substitutedOriginalIds.size,
-      requiresManualApproval: gate.requiresManualApproval
+      substitutionsCount
     });
     send(res, "risk_assessed", { ...risk });
 
     // --- Step 7: Human Approval Mode — pauses for either of two reasons:
     // a high-value cart (amount-based), or the merchant policy flagging a
     // restricted category (rule-based, independent of amount). The agent
-    // is genuinely paused here — this await literally blocks execution, so
-    // no order/payment action can happen until a human resolves it.
+    // cannot create the order on its own past this point in either case.
     if (gate.total > approvalThreshold || gate.requiresManualApproval) {
       const approvalReason = gate.requiresManualApproval
         ? `Merchant policy requires manual approval for this cart's category, regardless of amount.`
@@ -330,13 +220,64 @@ router.get("/agent/run", async (req, res) => {
       send(res, "approval_granted", { total: gate.total });
     }
 
-    // --- Step 8: create the order — Razorpay Test Mode if RAZORPAY_KEY_ID/
-    // SECRET are configured, otherwise a clearly labeled demo/mock fallback.
-    // Never real money either way (order.js never calls a live-mode API).
-    const order = await createOrder(gate.total, `receipt_${Date.now()}`);
+    // --- Step 8: create the order (real Razorpay test-mode if keys present)
+    let order;
+    try {
+      order = await createOrder(gate.total, `receipt_${Date.now()}`);
+    } catch (err) {
+      send(res, "error", { message: err.message });
+      cleanupRun(runId);
+      res.end();
+      return;
+    }
     send(res, "order_created", { order });
 
-    send(res, "done", { finalCart: proposal.cart, total: gate.total, orderId: order.id, source: order.source });
+    if (order.source === "mock") {
+      // Mock path is unchanged from before this feature existed — completes
+      // immediately, no payment step, since there's no real checkout to
+      // wait for. This preserves every existing demo scenario exactly.
+      send(res, "done", { finalCart: proposal.cart, total: gate.total, orderId: order.id, source: order.source });
+      cleanupRun(runId);
+      res.end();
+      return;
+    }
+
+    // --- Step 9: AWAITING_PAYMENT — creating a Razorpay order is NOT a
+    // completed payment. The flow pauses here until the user explicitly
+    // clicks "Proceed to Razorpay Test Payment" on the frontend and
+    // completes (or abandons) Checkout. The AI never completes payment on
+    // its own past this point.
+    if (stoppedOrContinue(runId, res)) return;
+    send(res, "awaiting_payment", {
+      reason: "The purchase has passed all governance checks. Waiting for explicit user action to begin Razorpay Test Mode Checkout.",
+      order: { id: order.id, amount: order.amount, currency: order.currency }
+    });
+
+    const paymentResult = await waitForPayment(runId);
+
+    if (stoppedOrContinue(runId, res)) return;
+
+    if (paymentResult.cancelled) {
+      send(res, "payment_cancelled", { reason: paymentResult.reason || "Payment cancelled by user." });
+      cleanupRun(runId);
+      res.end();
+      return;
+    }
+
+    if (!paymentResult.verified) {
+      send(res, "payment_failed", { reason: paymentResult.reason || "Razorpay Test Mode payment failed or could not be verified." });
+      cleanupRun(runId);
+      res.end();
+      return;
+    }
+
+    send(res, "done", {
+      finalCart: proposal.cart,
+      total: gate.total,
+      orderId: order.id,
+      source: order.source,
+      paymentId: paymentResult.payment_id
+    });
     cleanupRun(runId);
     res.end();
   } catch (err) {
