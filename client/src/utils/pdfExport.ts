@@ -400,7 +400,7 @@ export function exportAuditPdf({
     } else if (step.event === "order_created") {
       detailText = `Order ${rawData?.order?.id || ""} created via ${rawData?.order?.source === "razorpay_test_mode" ? "Razorpay Test Mode" : "Mock Mode"}. Amount: Rs. ${((rawData?.order?.amount || 0) / 100).toFixed(2)}`;
     } else if (step.event === "awaiting_payment") {
-      detailText = `Governance cleared. System paused awaiting user test payment authorization.`;
+      detailText = `Governance cleared. System paused awaiting user test payment initiation.`;
     } else if (step.event === "payment_initiated") {
       detailText = `User initiated Razorpay Test Mode checkout. Modal opened.`;
     } else if (step.event === "payment_verification_started") {

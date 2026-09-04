@@ -161,7 +161,7 @@ export default function PaymentPanel({ payment, runId, onInitiated, onVerifying 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
           <span className={`text-[10px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded ${config.badgeBg}`}>
-            {config.statusLabel}
+            {payment.status === "verified" ? "✅ PAYMENT VERIFIED" : config.statusLabel}
           </span>
           <span className="text-sm font-semibold text-ink">
             {config.heading}
@@ -169,7 +169,9 @@ export default function PaymentPanel({ payment, runId, onInitiated, onVerifying 
         </div>
         <div className="flex items-center gap-1.5 text-xs text-muted">
           <Icon className={`w-3.5 h-3.5 ${config.color} ${payment.status === "processing" || payment.status === "verifying" ? "animate-spin" : ""}`} />
-          <span className="font-medium">{config.statusLabel}</span>
+          <span className={`font-medium ${payment.status === "verified" ? "text-pass" : ""}`}>
+            {payment.status === "verified" ? "Verified" : config.statusLabel}
+          </span>
         </div>
       </div>
 

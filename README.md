@@ -823,8 +823,3 @@ Built for the Razorpay Buildathon.
 
 **Track:** AI Growth & Agentic Commerce
 
-```
-
-**This version removes the negative/problematic wording** and presents Custos as a polished hackathon product. It still keeps the important Test Mode distinction so the README remains technically honest.
-```
-

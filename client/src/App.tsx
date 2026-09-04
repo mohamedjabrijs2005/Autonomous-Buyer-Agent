@@ -1090,7 +1090,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>Custos — The Gated Buyer Agent</span>
           <span className="text-[11px] font-mono opacity-80">
-            Governed AI Commerce · White & Gold Edition
+            Governed AI Commerce
           </span>
         </div>
       </footer>
