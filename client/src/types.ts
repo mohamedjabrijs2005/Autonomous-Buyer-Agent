@@ -14,6 +14,7 @@ export type ApprovalRequest = { total: number; threshold: number; reason?: strin
 export type PaymentStatus =
   | "awaiting_payment"
   | "processing"
+  | "verifying"
   | "verified"
   | "failed"
   | "cancelled";

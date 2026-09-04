@@ -247,7 +247,7 @@ export default function AuditTrail({
                           </div>
                         </div>
                         <div className="text-[10px] text-muted mt-1">
-                          Test transaction authorized · No real payment collected
+                          Razorpay Test Mode order created · Awaiting user payment authorization
                         </div>
                       </div>
                     ) : (

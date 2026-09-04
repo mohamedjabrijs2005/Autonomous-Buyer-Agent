@@ -172,7 +172,7 @@ export default function GoalPanel({
           ) : waitingPayment ? (
             <>
               <CreditCard className="w-4 h-4 animate-pulse" />
-              <span>Awaiting test payment…</span>
+              <span>Order ready for payment…</span>
             </>
           ) : running ? (
             <>

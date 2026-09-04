@@ -378,7 +378,7 @@ export default function App() {
         status: "pass",
         timestamp: data.timestamp,
         raw: data,
-        detail: <div className="font-mono text-pass font-medium">₹{data.total} Authorized</div>
+        detail: <div className="font-mono text-pass font-medium">₹{data.total} Human Approval Granted</div>
       });
     });
 
@@ -436,18 +436,20 @@ export default function App() {
       setLastOrder(data.order);
       addStep({
         event: "order_created",
-        label: "Payment order created",
+        label: "Payment Order Created",
         status: "pass",
         timestamp: data.timestamp,
         raw: data,
         detail: (
           <div className="space-y-1">
-            <div className="font-mono font-medium">{data.order.id}</div>
-            <div className="text-xs text-muted">
-              ₹{(data.order.amount / 100).toFixed(2)} ·{" "}
-              {data.order.source === "razorpay_test_mode"
-                ? "Razorpay test-mode"
-                : "mock"}
+            <div className="text-xs font-medium text-ink">
+              Razorpay Test Mode order created.
+            </div>
+            <div className="font-mono text-xs text-muted">
+              Order ID: <span className="text-ink font-semibold">{data.order.id}</span>
+            </div>
+            <div className="font-mono text-xs text-muted">
+              Amount: <span className="text-gold font-bold">₹{(data.order.amount / 100).toFixed(2)}</span>
             </div>
           </div>
         )
@@ -467,13 +469,15 @@ export default function App() {
       setPayment(paymentInfo);
       addStep({
         event: "awaiting_payment",
-        label: "Awaiting Razorpay test payment",
+        label: "Awaiting Razorpay Test Payment",
         status: "warn",
         timestamp: data.timestamp,
         raw: data,
         detail: (
           <div className="space-y-1">
-            <div className="text-gold-dark font-medium">{data.reason}</div>
+            <div className="text-gold-dark font-medium text-xs">
+              The purchase has passed all governance checks. Waiting for explicit user action to begin Razorpay Test Mode Checkout.
+            </div>
             <div className="font-mono text-[11px] text-muted">
               Order ID: {data.order.id} · ₹{(data.order.amount / 100).toFixed(2)}
             </div>
@@ -487,22 +491,32 @@ export default function App() {
       setPayment((prev) => (prev ? { ...prev, status: "processing" } : null));
       addStep({
         event: "payment_initiated",
-        label: "Payment initiated — opening Razorpay Checkout",
+        label: "Payment Initiated — Opening Razorpay Checkout",
         status: "info",
         timestamp: data.timestamp,
         raw: data,
-        detail: <div className="text-xs text-muted">{data.reason}</div>
+        detail: (
+          <div className="text-xs text-ink">
+            User explicitly initiated Razorpay Test Mode Checkout.
+          </div>
+        )
       });
     });
 
     es.addEventListener("payment_verification_started", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
+      setPayment((prev) => (prev ? { ...prev, status: "verifying" } : null));
       addStep({
         event: "payment_verification_started",
-        label: "Verifying payment signature with backend…",
+        label: "Verifying Payment Signature With Backend",
         status: "info",
         timestamp: data.timestamp,
-        raw: data
+        raw: data,
+        detail: (
+          <div className="text-xs text-muted">
+            Securely verifying Razorpay payment signature.
+          </div>
+        )
       });
     });
 
@@ -515,14 +529,16 @@ export default function App() {
       setPayment(updated);
       addStep({
         event: "payment_verified",
-        label: "Razorpay payment verified",
+        label: "Razorpay Payment Verified",
         status: "pass",
         timestamp: data.timestamp,
         raw: data,
         detail: (
           <div className="space-y-1">
-            <div className="text-pass font-medium">HMAC SHA-256 signature verified server-side.</div>
-            <div className="font-mono text-[11px] text-muted">Payment ID: {data.payment_id}</div>
+            <div className="text-pass font-medium text-xs">HMAC SHA-256 signature verified server-side.</div>
+            <div className="font-mono text-[11px] text-muted">
+              Payment ID: <span className="text-ink font-semibold">{data.payment_id}</span>
+            </div>
           </div>
         )
       });
@@ -582,7 +598,7 @@ export default function App() {
       }
       addStep({
         event: "done",
-        label: data.paymentId ? "Flow complete — payment verified" : "Flow complete — order placed",
+        label: data.paymentId ? "Transaction Completed" : "Flow Complete — Order Placed",
         status: "pass",
         timestamp: data.timestamp,
         raw: data,
@@ -602,7 +618,7 @@ export default function App() {
             </div>
             {data.paymentId && (
               <div className="text-[11px] text-pass font-medium pt-1 border-t border-line/60">
-                Transaction completed successfully after policy validation and backend payment signature verification.
+                Payment completed successfully after policy validation and secure backend payment verification.
               </div>
             )}
           </div>
@@ -611,6 +627,7 @@ export default function App() {
       es.close();
       finishRun("passed");
     });
+
 
     es.addEventListener("error", (e) => {
       let message = "Connection error";
@@ -715,9 +732,11 @@ export default function App() {
               <span
                 className={`w-2 h-2 rounded-full ${
                   payment?.status === "awaiting_payment"
-                    ? "bg-accent animate-pulse"
-                    : payment?.status === "processing"
-                    ? "bg-accent2 animate-pulse"
+                    ? "bg-gold animate-pulse"
+                    : payment?.status === "processing" || payment?.status === "verifying"
+                    ? "bg-amber-500 animate-pulse"
+                    : isRunSuccess
+                    ? "bg-pass"
                     : running
                     ? "bg-pass animate-pulse"
                     : approval
@@ -726,14 +745,26 @@ export default function App() {
                 }`}
               />
               <span className="text-[11px] font-mono font-semibold">
-                {payment?.status === "awaiting_payment"
-                  ? "AWAITING TEST PAYMENT"
+                {isRunSuccess
+                  ? "TRANSACTION COMPLETED"
+                  : payment?.status === "verified"
+                  ? "PAYMENT VERIFIED"
+                  : payment?.status === "verifying"
+                  ? "VERIFYING PAYMENT"
                   : payment?.status === "processing"
-                  ? "PROCESSING PAYMENT"
+                  ? "PAYMENT IN PROGRESS"
+                  : payment?.status === "awaiting_payment"
+                  ? "READY FOR PAYMENT"
+                  : payment?.status === "failed"
+                  ? "PAYMENT FAILED"
+                  : payment?.status === "cancelled"
+                  ? "PAYMENT CANCELLED"
                   : running
                   ? "AGENT LIVE"
                   : approval
                   ? "AWAITING APPROVAL"
+                  : isRunFinished
+                  ? "EXECUTION HALTED"
                   : "READY"}
               </span>
             </div>
@@ -772,6 +803,9 @@ export default function App() {
               runId={runIdRef.current}
               onInitiated={() => {
                 setPayment((prev) => (prev ? { ...prev, status: "processing" } : null));
+              }}
+              onVerifying={() => {
+                setPayment((prev) => (prev ? { ...prev, status: "verifying" } : null));
               }}
             />
           </div>
@@ -875,71 +909,139 @@ export default function App() {
               </div>
             </div>
 
-            {/* Run Complete Summary Card */}
-            {isRunFinished && (
-              <div className="bg-panel border-2 border-gold-border rounded-xl p-4 sm:p-5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded ${
-                        isRunSuccess
-                          ? "bg-gold text-white"
-                          : "bg-fail text-white"
-                      }`}
-                    >
-                      {isRunSuccess ? "Run Complete" : "Run Terminated"}
-                    </span>
-                    <span className="text-xs font-semibold text-ink">
-                      {isRunSuccess ? "Order successfully authorized" : "Execution halted safely"}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-muted">
+            {/* Top Status & Summary Card */}
+            {(orderData || payment || isRunFinished) && (() => {
+              let badgeText = "READY FOR PAYMENT";
+              let badgeColor = "bg-gold text-white";
+              let mainHeading = "Order Ready for Payment";
+              let descText = "Awaiting Razorpay Test Mode payment.";
+
+              if (isRunSuccess) {
+                badgeText = "TRANSACTION COMPLETED";
+                badgeColor = "bg-pass text-white";
+                mainHeading = "Transaction Completed";
+                descText = "Payment completed successfully after policy validation and backend verification.";
+              } else if (payment?.status === "verified") {
+                badgeText = "PAYMENT VERIFIED";
+                badgeColor = "bg-pass text-white";
+                mainHeading = "Payment Verified Successfully";
+                descText = "Razorpay payment signature verified successfully.";
+              } else if (payment?.status === "verifying") {
+                badgeText = "VERIFYING PAYMENT";
+                badgeColor = "bg-amber-600 text-white animate-pulse";
+                mainHeading = "Verifying Payment";
+                descText = "Securely verifying payment with the backend.";
+              } else if (payment?.status === "processing") {
+                badgeText = "PAYMENT IN PROGRESS";
+                badgeColor = "bg-amber-600 text-white animate-pulse";
+                mainHeading = "Payment Initiated";
+                descText = "Razorpay Test Mode Checkout is in progress.";
+              } else if (payment?.status === "awaiting_payment" || (orderData && !isRunFinished)) {
+                badgeText = "READY FOR PAYMENT";
+                badgeColor = "bg-gold text-white";
+                mainHeading = "Order Ready for Payment";
+                descText = "Awaiting Razorpay Test Mode payment.";
+              } else if (payment?.status === "failed") {
+                badgeText = "PAYMENT FAILED";
+                badgeColor = "bg-fail text-white";
+                mainHeading = "Payment Failed";
+                descText = payment.reason || "Razorpay Test Mode payment could not be completed.";
+              } else if (payment?.status === "cancelled") {
+                badgeText = "PAYMENT CANCELLED";
+                badgeColor = "bg-muted text-white";
+                mainHeading = "Payment Cancelled";
+                descText = "Payment cancelled by user. No payment was completed.";
+              } else if (isRunFinished && !isRunSuccess) {
+                badgeText = "RUN TERMINATED";
+                badgeColor = "bg-fail text-white";
+                mainHeading = "Execution Halted Safely";
+                descText = "Governance policy gate halted the flow — no money action taken.";
+              }
+
+              return (
+                <div className="bg-panel border-2 border-gold-border rounded-xl p-4 sm:p-5 shadow-card flex flex-col gap-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                      Spend:{" "}
-                      <span className="font-mono font-semibold text-ink">
-                        ₹{displayCommitted}
-                      </span>
-                      {displayBudgetNum && (
-                        <span className="text-muted"> / ₹{displayBudgetNum}</span>
-                      )}
-                    </div>
-                    {displayRisk && (
-                      <div>
-                        Risk:{" "}
-                        <span className="font-mono font-semibold text-ink">
-                          {displayRisk.score}/100 ({displayRisk.level.toUpperCase()})
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-[10px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded ${badgeColor}`}
+                        >
+                          {badgeText}
+                        </span>
+                        <span className="text-sm font-semibold text-ink">
+                          {mainHeading}
                         </span>
                       </div>
-                    )}
-                    {orderData?.id && (
-                      <div className="flex items-center gap-1 font-mono text-[11px] text-ink bg-gold-light px-2 py-0.5 rounded border border-gold-border">
-                        <CreditCard className="w-3 h-3 text-gold" />
-                        <span>{orderData.id}</span>
+                      <p className="text-xs text-muted mt-1 leading-relaxed">
+                        {descText}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-muted">
+                        <div>
+                          Spend:{" "}
+                          <span className="font-mono font-semibold text-ink">
+                            ₹{displayCommitted}
+                          </span>
+                          {displayBudgetNum && (
+                            <span className="text-muted"> / ₹{displayBudgetNum}</span>
+                          )}
+                        </div>
+                        {displayRisk && (
+                          <div>
+                            Risk:{" "}
+                            <span className="font-mono font-semibold text-ink">
+                              {displayRisk.score}/100 ({displayRisk.level.toUpperCase()})
+                            </span>
+                          </div>
+                        )}
+                        {orderData?.id && (
+                          <div className="flex items-center gap-1 font-mono text-[11px] text-ink bg-gold-light px-2 py-0.5 rounded border border-gold-border">
+                            <CreditCard className="w-3 h-3 text-gold" />
+                            <span>{orderData.id}</span>
+                          </div>
+                        )}
+                        {(payment?.paymentId || viewedRun?.payment?.paymentId) && (
+                          <div className="flex items-center gap-1 font-mono text-[11px] text-pass bg-pass-bg px-2 py-0.5 rounded border border-pass-border">
+                            <span>{payment?.paymentId || viewedRun?.payment?.paymentId}</span>
+                          </div>
+                        )}
+                        {orderData?.source && (
+                          <span className="text-[11px] font-medium text-gold-dark">
+                            {orderData.source === "razorpay_test_mode"
+                              ? "Razorpay Test Mode"
+                              : "Mock Mode"}
+                          </span>
+                        )}
                       </div>
-                    )}
-                    {orderData?.source && (
-                      <span className="text-[11px] font-medium text-gold-dark">
-                        {orderData.source === "razorpay_test_mode"
-                          ? "Razorpay Test Mode"
-                          : "Mock Mode"}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                    </div>
 
-                <div className="shrink-0 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => exportCurrentTrail(displaySteps)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-ink hover:text-gold-hover bg-surface hover:bg-gold-light/60 border border-line hover:border-gold-border px-3 py-2 rounded-lg transition-colors shadow-xs"
-                    title="Export transaction audit report as PDF"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-gold" />
-                    <span>Export Audit PDF</span>
-                  </button>
+                    <div className="shrink-0 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => exportCurrentTrail(displaySteps)}
+                        className="flex items-center gap-1.5 text-xs font-medium text-ink hover:text-gold-hover bg-surface hover:bg-gold-light/60 border border-line hover:border-gold-border px-3 py-2 rounded-lg transition-colors shadow-xs"
+                        title="Export transaction audit report as PDF"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-gold" />
+                        <span>Export Audit PDF</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Final Completed State Checklist — Correction 5 */}
+                  {isRunSuccess && (
+                    <div className="mt-1 pt-3 border-t border-line/60 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-pass font-medium">
+                      <div className="flex items-center gap-1.5"><span>✓</span><span>Policy validated</span></div>
+                      <div className="flex items-center gap-1.5"><span>✓</span><span>Merchant policy approved</span></div>
+                      <div className="flex items-center gap-1.5"><span>✓</span><span>Order created</span></div>
+                      <div className="flex items-center gap-1.5"><span>✓</span><span>User initiated payment</span></div>
+                      <div className="flex items-center gap-1.5"><span>✓</span><span>Razorpay payment completed</span></div>
+                      <div className="flex items-center gap-1.5"><span>✓</span><span>Backend signature verified</span></div>
+                      <div className="flex items-center gap-1.5 col-span-2 sm:col-span-2 font-bold"><span>✓</span><span>Transaction completed</span></div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
 
