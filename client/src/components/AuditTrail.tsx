@@ -12,9 +12,11 @@ import {
   Lock,
   PauseCircle,
   FileCheck,
-  Ban
+  Ban,
+  FileText
 } from "lucide-react";
 import type { TimelineStep } from "../types";
+import { exportAuditPdf } from "../utils/pdfExport";
 
 function formatTime(iso: string) {
   try {
@@ -22,25 +24,6 @@ function formatTime(iso: string) {
   } catch {
     return "";
   }
-}
-
-function exportTrail(steps: TimelineStep[]) {
-  const payload = steps.map((s) => ({
-    step: s.event,
-    label: s.label,
-    status: s.status,
-    timestamp: s.timestamp,
-    data: s.raw ?? null
-  }));
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `audit-trail-${Date.now()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 function getStepIcon(step: TimelineStep) {
@@ -140,12 +123,12 @@ export default function AuditTrail({
         {steps.length > 0 && !running && (
           <button
             type="button"
-            onClick={() => exportTrail(steps)}
+            onClick={() => exportAuditPdf({ steps })}
             className="flex items-center gap-1.5 text-xs font-medium text-ink hover:text-gold-hover bg-surface hover:bg-gold-light/60 border border-line hover:border-gold-border px-3 py-1.5 rounded-lg transition-colors shadow-xs"
-            title="Export audit log as JSON"
+            title="Export audit report as PDF"
           >
-            <Download className="w-3.5 h-3.5 text-muted" />
-            <span>Export JSON</span>
+            <FileText className="w-3.5 h-3.5 text-gold" />
+            <span>Export PDF</span>
           </button>
         )}
       </div>

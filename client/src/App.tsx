@@ -8,7 +8,8 @@ import {
   Clock,
   Download,
   ShieldAlert,
-  CreditCard
+  CreditCard,
+  FileText
 } from "lucide-react";
 import GoalPanel from "./components/GoalPanel";
 import AuditTrail from "./components/AuditTrail";
@@ -18,6 +19,7 @@ import ApprovalGate from "./components/ApprovalGate";
 import RunHistory from "./components/RunHistory";
 import type { TimelineStep, RunSummary, RiskInfo, ApprovalRequest } from "./types";
 import { API_BASE } from "./config";
+import { exportAuditPdf } from "./utils/pdfExport";
 
 let stepCounter = 0;
 const nextId = () => `step_${Date.now()}_${stepCounter++}`;
@@ -524,22 +526,15 @@ export default function App() {
   };
 
   const exportCurrentTrail = (stepsToExport: TimelineStep[]) => {
-    const payload = stepsToExport.map((s) => ({
-      step: s.event,
-      label: s.label,
-      status: s.status,
-      timestamp: s.timestamp,
-      data: s.raw ?? null
-    }));
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `audit-trail-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    exportAuditPdf({
+      steps: stepsToExport,
+      goal: viewedRun ? viewedRun.goal : goal,
+      budget: viewedRun ? viewedRun.budget : budget,
+      total: displayCommitted,
+      status: viewedRun ? (viewedRun.status === "passed" ? "Approved" : "Failed") : undefined,
+      risk: displayRisk,
+      order: orderData
+    });
   };
 
   const budgetNum = budget ? Number(budget) : null;
@@ -779,9 +774,10 @@ export default function App() {
                     type="button"
                     onClick={() => exportCurrentTrail(displaySteps)}
                     className="flex items-center gap-1.5 text-xs font-medium text-ink hover:text-gold-hover bg-surface hover:bg-gold-light/60 border border-line hover:border-gold-border px-3 py-2 rounded-lg transition-colors shadow-xs"
+                    title="Export transaction audit report as PDF"
                   >
-                    <Download className="w-3.5 h-3.5 text-muted" />
-                    <span>Export Audit JSON</span>
+                    <FileText className="w-3.5 h-3.5 text-gold" />
+                    <span>Export Audit PDF</span>
                   </button>
                 </div>
               </div>
