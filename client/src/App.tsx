@@ -8,8 +8,7 @@ import {
   Clock,
   Download,
   ShieldAlert,
-  CreditCard,
-  FileText
+  CreditCard
 } from "lucide-react";
 import GoalPanel from "./components/GoalPanel";
 import AuditTrail from "./components/AuditTrail";
@@ -20,7 +19,6 @@ import PaymentPanel from "./components/PaymentPanel";
 import RunHistory from "./components/RunHistory";
 import type { TimelineStep, RunSummary, RiskInfo, ApprovalRequest, PaymentInfo } from "./types";
 import { API_BASE } from "./config";
-import { exportAuditPdf } from "./utils/pdfExport";
 
 let stepCounter = 0;
 const nextId = () => `step_${Date.now()}_${stepCounter++}`;
@@ -675,18 +673,6 @@ export default function App() {
     }
   };
 
-  const exportCurrentTrail = (stepsToExport: TimelineStep[]) => {
-    exportAuditPdf({
-      steps: stepsToExport,
-      goal: viewedRun ? viewedRun.goal : goal,
-      budget: viewedRun ? viewedRun.budget : budget,
-      total: displayCommitted,
-      status: viewedRun ? (viewedRun.status === "passed" ? "Approved" : "Failed") : undefined,
-      risk: displayRisk,
-      order: orderData
-    });
-  };
-
   const budgetNum = budget ? Number(budget) : null;
   const viewedRun = viewingId ? history.find((h) => h.id === viewingId) : null;
   const displaySteps = viewedRun ? viewedRun.steps : steps;
@@ -746,9 +732,9 @@ export default function App() {
               />
               <span className="text-[11px] font-mono font-semibold">
                 {isRunSuccess
-                  ? "TRANSACTION COMPLETED"
+                  ? "✓ TRANSACTION COMPLETED"
                   : payment?.status === "verified"
-                  ? "PAYMENT VERIFIED"
+                  ? "✓ PAYMENT VERIFIED"
                   : payment?.status === "verifying"
                   ? "VERIFYING PAYMENT"
                   : payment?.status === "processing"
@@ -917,12 +903,12 @@ export default function App() {
               let descText = "Awaiting Razorpay Test Mode payment.";
 
               if (isRunSuccess) {
-                badgeText = "TRANSACTION COMPLETED";
+                badgeText = "✓ TRANSACTION COMPLETED";
                 badgeColor = "bg-pass text-white";
                 mainHeading = "Transaction Completed";
                 descText = "Payment completed successfully after policy validation and backend verification.";
               } else if (payment?.status === "verified") {
-                badgeText = "PAYMENT VERIFIED";
+                badgeText = "✓ PAYMENT VERIFIED";
                 badgeColor = "bg-pass text-white";
                 mainHeading = "Payment Verified Successfully";
                 descText = "Razorpay payment signature verified successfully.";
@@ -1012,18 +998,6 @@ export default function App() {
                           </span>
                         )}
                       </div>
-                    </div>
-
-                    <div className="shrink-0 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => exportCurrentTrail(displaySteps)}
-                        className="flex items-center gap-1.5 text-xs font-medium text-ink hover:text-gold-hover bg-surface hover:bg-gold-light/60 border border-line hover:border-gold-border px-3 py-2 rounded-lg transition-colors shadow-xs"
-                        title="Export transaction audit report as PDF"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-gold" />
-                        <span>Export Audit PDF</span>
-                      </button>
                     </div>
                   </div>
 

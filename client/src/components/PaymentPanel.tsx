@@ -52,7 +52,7 @@ const STATUS_CONFIG: Record<
     icon: Loader2
   },
   verified: {
-    statusLabel: "PAYMENT VERIFIED",
+    statusLabel: "✓ PAYMENT VERIFIED",
     heading: "Payment Verified Successfully",
     description: "Razorpay payment signature verified securely on the backend.",
     color: "text-pass",
@@ -161,7 +161,7 @@ export default function PaymentPanel({ payment, runId, onInitiated, onVerifying 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
           <span className={`text-[10px] font-bold tracking-wider uppercase px-2.5 py-0.5 rounded ${config.badgeBg}`}>
-            {payment.status === "verified" ? "✅ PAYMENT VERIFIED" : config.statusLabel}
+            {payment.status === "verified" ? "✓ PAYMENT VERIFIED" : config.statusLabel}
           </span>
           <span className="text-sm font-semibold text-ink">
             {config.heading}

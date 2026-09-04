@@ -11,6 +11,19 @@ export type PdfReportData = {
   order?: { id: string; source: string; amount: number } | null;
 };
 
+function sanitizePdfText(str: string): string {
+  if (!str) return "";
+  return str
+    .replace(/₹/g, "Rs. ")
+    .replace(/[–—]/g, " - ")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/✓/g, "[OK]")
+    .replace(/×/g, "x")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[^\x00-\x7F]/g, "");
+}
+
 export function exportAuditPdf({
   steps,
   goal,
@@ -63,10 +76,10 @@ export function exportAuditPdf({
 
     const headerBaseline = startY + 4.5;
     doc.text("#", margin + 2.5, headerBaseline);
-    doc.text("TIME", margin + 9.5, headerBaseline);
-    doc.text("EVENT / STAGE", margin + 27, headerBaseline);
-    doc.text("STATUS", margin + 77, headerBaseline);
-    doc.text("AUDIT RECORD & REASONING DETAILS", margin + 98, headerBaseline);
+    doc.text("TIME", margin + 8.5, headerBaseline);
+    doc.text("EVENT / STAGE", margin + 23, headerBaseline);
+    doc.text("STATUS", margin + 74, headerBaseline);
+    doc.text("AUDIT RECORD & REASONING DETAILS", margin + 89, headerBaseline);
   };
 
   const drawFirstPageHeader = () => {
@@ -161,12 +174,12 @@ export function exportAuditPdf({
   // Extract metadata from steps if not explicitly provided
   const goalStep = steps.find((s) => s.event === "goal_received");
   const rawGoalData = goalStep?.raw as any;
-  const resolvedGoal = goal || rawGoalData?.goal || "Autonomous Purchase";
-  const resolvedBudget = budget || (rawGoalData?.budget ? String(rawGoalData.budget) : "N/A");
+  const resolvedGoal = sanitizePdfText(goal || rawGoalData?.goal || "Autonomous Purchase");
+  const resolvedBudget = sanitizePdfText(budget || (rawGoalData?.budget ? String(rawGoalData.budget) : "N/A"));
 
   const orderStep = steps.find((s) => s.event === "order_created");
   const rawOrder = (orderStep?.raw as any)?.order || order;
-  const resolvedOrder = rawOrder ? rawOrder.id : "N/A";
+  const resolvedOrder = sanitizePdfText(rawOrder ? rawOrder.id : "N/A");
   const resolvedSource = rawOrder
     ? rawOrder.source === "razorpay_test_mode"
       ? "Razorpay Test Mode"
@@ -425,9 +438,15 @@ export function exportAuditPdf({
       detailText = step.label;
     }
 
-    const detailColWidth = contentWidth - 98;
-    const lines = doc.splitTextToSize(detailText, detailColWidth - 4);
-    const rowHeight = Math.max(7.2, lines.length * 3.6 + 3.8);
+    const cleanStage = sanitizePdfText(step.label);
+    const stageLines = doc.splitTextToSize(cleanStage, 48);
+
+    const cleanDetail = sanitizePdfText(detailText);
+    const detailColWidth = contentWidth - 89;
+    const detailLines = doc.splitTextToSize(cleanDetail, detailColWidth - 3);
+
+    const numLines = Math.max(stageLines.length, detailLines.length);
+    const rowHeight = Math.max(7.2, numLines * 3.4 + 3.6);
 
     checkPageBreak(rowHeight + 1.5);
 
@@ -457,19 +476,20 @@ export function exportAuditPdf({
     } catch {
       timeFormatted = "--:--:--";
     }
-    doc.text(timeFormatted, margin + 9.5, baseY);
+    doc.text(timeFormatted, margin + 8.5, baseY);
 
-    // 3. Stage Label
+    // 3. Stage Label (multi-line wrapped, clean, no truncation)
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.0);
+    doc.setFontSize(6.8);
     doc.setTextColor(ink[0], ink[1], ink[2]);
-    const cleanLabel = step.label.length > 32 ? step.label.slice(0, 31) + "..." : step.label;
-    doc.text(cleanLabel, margin + 27, baseY);
+    stageLines.forEach((sLine: string, sIdx: number) => {
+      doc.text(sLine, margin + 23, baseY + sIdx * 3.4);
+    });
 
     // 4. Status Badge Pill
-    const pillW = 14;
-    const pillH = 4.0;
-    const pillX = margin + 77;
+    const pillW = 13.5;
+    const pillH = 4.2;
+    const pillX = margin + 72.5;
     const pillY = y + 1.6;
 
     let bText = "INFO";
@@ -502,14 +522,14 @@ export function exportAuditPdf({
     doc.setFont("helvetica", "bold");
     doc.setFontSize(6.0);
     doc.setTextColor(bTextColor[0], bTextColor[1], bTextColor[2]);
-    doc.text(bText, pillX + pillW / 2, pillY + 2.9, { align: "center" });
+    doc.text(bText, pillX + pillW / 2, pillY + 3.0, { align: "center" });
 
-    // 5. Detail text lines
+    // 5. Detail text lines (sanitized font, clean proportional spacing)
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.8);
     doc.setTextColor(slate[0], slate[1], slate[2]);
-    lines.forEach((line: string, lIdx: number) => {
-      doc.text(line, margin + 98, baseY + lIdx * 3.6);
+    detailLines.forEach((line: string, lIdx: number) => {
+      doc.text(line, margin + 89, baseY + lIdx * 3.4);
     });
 
     y += rowHeight;
