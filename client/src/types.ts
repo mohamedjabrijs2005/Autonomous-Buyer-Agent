@@ -11,6 +11,22 @@ export type RiskLevel = "low" | "medium" | "high";
 export type RiskInfo = { score: number; level: RiskLevel; reasons: string[] };
 export type ApprovalRequest = { total: number; threshold: number; reason?: string };
 
+export type PaymentStatus =
+  | "awaiting_payment"
+  | "processing"
+  | "verified"
+  | "failed"
+  | "cancelled";
+
+export type PaymentInfo = {
+  status: PaymentStatus;
+  orderId: string;
+  amount: number;
+  currency: string;
+  paymentId?: string;
+  reason?: string;
+};
+
 export type TimelineStep = {
   id: string;
   event: string;
