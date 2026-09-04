@@ -1031,31 +1031,29 @@ export default function App() {
           </div>
         )}
 
-        {/* Two-Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Goal, Vertical Catalog, and Policy Controls (approx 45%) */}
-          <div className="lg:col-span-5">
-            <GoalPanel
-              goal={goal}
-              setGoal={setGoal}
-              budget={budget}
-              setBudget={setBudget}
-              onRun={runAgent}
-              running={running}
-              waitingApproval={!!approval}
-              waitingPayment={payment?.status === "awaiting_payment"}
-            />
-          </div>
+        {/* Single-Column Vertical Layout */}
+        {/* Section 1 — Buyer Agent Goal (full width) */}
+        <div className="w-full">
+          <GoalPanel
+            goal={goal}
+            setGoal={setGoal}
+            budget={budget}
+            setBudget={setBudget}
+            onRun={runAgent}
+            running={running}
+            waitingApproval={!!approval}
+            waitingPayment={payment?.status === "awaiting_payment"}
+          />
+        </div>
 
-          {/* Right Column: Live Execution Timeline (approx 55%) */}
-          <div className="lg:col-span-7 lg:sticky lg:top-20">
-            <AuditTrail
-              steps={displaySteps}
-              running={displayRunning}
-              waitingApproval={!!approval && !viewedRun}
-              waitingPayment={payment?.status === "awaiting_payment" && !viewedRun}
-            />
-          </div>
+        {/* Section 2 — Live Execution (full width, 24–32px below Goal) */}
+        <div className="w-full mt-8">
+          <AuditTrail
+            steps={displaySteps}
+            running={displayRunning}
+            waitingApproval={!!approval && !viewedRun}
+            waitingPayment={payment?.status === "awaiting_payment" && !viewedRun}
+          />
         </div>
       </main>
 

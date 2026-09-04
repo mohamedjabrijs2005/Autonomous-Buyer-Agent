@@ -24,6 +24,27 @@ function sanitizePdfText(str: string): string {
     .replace(/[^\x00-\x7F]/g, "");
 }
 
+// Product catalog map — mirrors server/data/catalog.js
+// Used to convert internal SKU IDs (p1, p2 …) to human-readable names in the PDF.
+const CATALOG_MAP: Record<string, string> = {
+  p1:  "Assorted Trail Mix (500g)",
+  p2:  "Dark Chocolate Almonds (250g)",
+  p3:  "Masala Makhana (200g)",
+  p4:  "Roasted Chana (300g)",
+  p5:  "Multigrain Crackers (Pack of 3)",
+  p6:  "Filter Coffee Powder (500g)",
+  p7:  "Green Tea Bags (Box of 25)",
+  p8:  "Cold Brew Concentrate (750ml)",
+  p9:  "A4 Notebook Set (Pack of 5)",
+  p10: "Gel Pens (Box of 12)",
+  p11: "Sticky Notes Combo Pack",
+  p12: "Desk Organizer Tray",
+};
+
+function productName(id: string): string {
+  return CATALOG_MAP[id] || id;
+}
+
 export function exportAuditPdf({
   steps,
   goal,
@@ -390,13 +411,20 @@ export function exportAuditPdf({
     } else if (step.event === "goal_interpreted") {
       detailText = rawData?.reason || (rawData?.categories ? `Restricted to ${rawData.categories.join(", ")}` : "All categories eligible");
     } else if (step.event === "cart_proposed") {
-      const items = (rawData?.cart || []).map((c: any) => `${c.id} (qty ${c.qty})`).join(", ");
-      detailText = `${rawData?.revised ? "Revised Cart" : "Proposed Cart"} (Total: Rs. ${rawData?.total_estimated || 0}) | Items: ${items || "selected"}`;
+      // Cart items: human-readable names, not internal IDs
+      const cartLines = (rawData?.cart || []).map((c: any) => `${productName(c.id)} x${c.qty}`).join(" | ");
+      const rejectedLines = (rawData?.rejected || []).length > 0
+        ? ` | Rejected: ${(rawData.rejected || []).map((r: any) => productName(r.id)).join(", ")}`
+        : "";
+      detailText = `${rawData?.revised ? "Revised Cart" : "Proposed Cart"} (Total: Rs. ${rawData?.total_estimated || 0}) | ${cartLines || "items selected"}${rejectedLines}`;
     } else if (step.event === "stock_check") {
       const issues = (rawData?.checks || []).map((c: any) => c.reason).join("; ");
       detailText = `Stock check failed: ${issues}`;
     } else if (step.event === "substitution") {
-      const subs = (rawData?.substitutions || []).map((s: any) => `${s.original} -> ${s.replacement}`).join("; ");
+      // Substitutions: show human-readable names, not IDs
+      const subs = (rawData?.substitutions || []).map((s: any) =>
+        `${productName(s.original)} -> ${productName(s.replacement)}`
+      ).join("; ");
       detailText = `Out-of-stock substitution applied: ${subs}`;
     } else if (step.event === "policy_check") {
       detailText = `Attempt ${rawData?.attempt || 1}: ${rawData?.reason || ""} (Total: Rs. ${rawData?.total || "N/A"})`;
@@ -431,9 +459,13 @@ export function exportAuditPdf({
     } else if (step.event === "flow_stopped") {
       detailText = `Bounded revision limit reached. Flow stopped safely without ordering.`;
     } else if (step.event === "done") {
-      detailText = rawData?.paymentId
-        ? `Flow complete. Payment ${rawData.paymentId} verified server-side. Order: ${rawData.orderId}. Total: Rs. ${rawData.total}`
-        : `Flow complete. Order placed: ${rawData?.orderId || ""}. Total: Rs. ${rawData?.total || 0}`;
+      // Final cart: human-readable names
+      const finalItems = (rawData?.finalCart || []).map((c: any) => `${productName(c.id)} x${c.qty}`).join(" | ");
+      if (rawData?.paymentId) {
+        detailText = `Transaction complete. Payment ${rawData.paymentId} verified server-side. Order: ${rawData.orderId}. Total: Rs. ${rawData.total}${finalItems ? ` | Items: ${finalItems}` : ""}`;
+      } else {
+        detailText = `Flow complete. Order placed: ${rawData?.orderId || ""}. Total: Rs. ${rawData?.total || 0}${finalItems ? ` | Items: ${finalItems}` : ""}`;
+      }
     } else {
       detailText = step.label;
     }
