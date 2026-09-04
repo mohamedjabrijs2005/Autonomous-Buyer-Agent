@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ShoppingCart, Play, Loader2, Package, ShieldCheck, Repeat, Lock } from "lucide-react";
+import { ShoppingCart, Play, Loader2, Package, ShieldCheck, Repeat, Lock, CreditCard } from "lucide-react";
 import { API_BASE } from "../config";
 
 type Product = {
@@ -19,6 +19,7 @@ type Props = {
   onRun: () => void;
   running: boolean;
   waitingApproval?: boolean;
+  waitingPayment?: boolean;
 };
 
 const PRESETS = [
@@ -34,7 +35,8 @@ export default function GoalPanel({
   setBudget,
   onRun,
   running,
-  waitingApproval
+  waitingApproval,
+  waitingPayment
 }: Props) {
   const [catalog, setCatalog] = useState<Product[]>([]);
 
@@ -166,6 +168,11 @@ export default function GoalPanel({
             <>
               <Lock className="w-4 h-4 animate-pulse" />
               <span>Waiting for human approval…</span>
+            </>
+          ) : waitingPayment ? (
+            <>
+              <CreditCard className="w-4 h-4 animate-pulse" />
+              <span>Awaiting test payment…</span>
             </>
           ) : running ? (
             <>

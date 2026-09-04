@@ -198,36 +198,41 @@ the transaction can be understood before execution.
 
 ---
 
-### 8. Razorpay Test Mode Integration
+### 8. Razorpay Test Mode Gated Payment & Verification
 
-Custos integrates with Razorpay's Orders API using Razorpay Test Mode.
+Custos creates Razorpay Test Mode orders only after AI reasoning and deterministic policy gates have completed. Payment execution requires explicit user initiation through Razorpay Checkout, and successful payments are verified server-side using Razorpay's payment signature.
 
-When Razorpay Test Mode credentials are configured, the backend creates a
-Razorpay Test Mode order through the official Razorpay Node SDK.
+**CRITICAL SAFETY PRINCIPLE: The AI does not autonomously complete payment.**
 
-Example:
+The architecture enforces a strict human-gated boundary:
 
 ```text
-Razorpay Test Mode
-        ↓
-Orders API
-        ↓
-order_XXXXXXXX
-        ↓
-Audit Trail
+AI Proposes Cart
+       ↓
+Deterministic Policies Validate
+       ↓
+Human Approves (if required)
+       ↓
+Razorpay Test Mode Order Created (AWAITING_PAYMENT)
+       ↓
+User Explicitly Initiates Payment ("Proceed to Razorpay Test Payment")
+       ↓
+Razorpay Checkout Modal
+       ↓
+Backend HMAC-SHA256 Signature Verification (/payment/verify)
+       ↓
+PAYMENT_VERIFIED Recorded in Audit Trail
 ```
 
-The application records:
+The application records and displays:
 
-* Razorpay order ID
-* Amount
-* Currency
-* Receipt
-* Payment source
-* Order creation event
+* Razorpay order ID, currency, and amount in paise
+* Clear state transition from `AWAITING_PAYMENT` to `PAYMENT_PROCESSING`
+* Client-side Razorpay Checkout modal launch only on explicit user click
+* Server-side timing-safe HMAC-SHA256 signature verification (`crypto.timingSafeEqual`)
+* Verified payment ID attached to the final audit record
 
-Razorpay Test Mode allows the complete transaction workflow to be demonstrated
-without processing live payments.
+Razorpay Test Mode allows the complete transaction workflow to be demonstrated securely without processing live payments. Test-mode-only guards prevent non-test credentials from being initialized.
 
 ---
 

@@ -46,4 +46,5 @@ export type RunSummary = {
   total: number;
   steps: TimelineStep[];
   risk?: RiskInfo;
+  payment?: PaymentInfo;
 };

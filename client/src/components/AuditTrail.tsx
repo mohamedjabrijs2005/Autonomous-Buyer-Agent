@@ -30,7 +30,17 @@ function getStepIcon(step: TimelineStep) {
   switch (step.event) {
     case "order_created":
     case "done":
+    case "awaiting_payment":
+    case "payment_initiated":
       return <CreditCard className="w-3.5 h-3.5 text-gold stroke-[2.5]" />;
+    case "payment_verification_started":
+      return <RefreshCw className="w-3.5 h-3.5 text-gold stroke-[2.5]" />;
+    case "payment_verified":
+      return <FileCheck className="w-3.5 h-3.5 text-pass stroke-[2.5]" />;
+    case "payment_failed":
+    case "payment_verification_failed":
+    case "payment_cancelled":
+      return <Ban className="w-3.5 h-3.5 text-fail stroke-[2.5]" />;
     case "policy_check":
     case "merchant_policy_check":
       return step.status === "pass" ? (
@@ -87,11 +97,13 @@ function getNodeClasses(status: TimelineStep["status"]) {
 export default function AuditTrail({
   steps,
   running,
-  waitingApproval
+  waitingApproval,
+  waitingPayment
 }: {
   steps: TimelineStep[];
   running: boolean;
   waitingApproval?: boolean;
+  waitingPayment?: boolean;
 }) {
   return (
     <div className="bg-panel border border-line rounded-xl p-5 sm:p-6 shadow-card h-full flex flex-col">
@@ -102,7 +114,13 @@ export default function AuditTrail({
             <h2 className="text-xs font-semibold tracking-wider text-muted uppercase">
               Live Execution
             </h2>
-            {running && (
+            {waitingPayment && (
+              <span className="flex items-center gap-1.5 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-gold-light text-gold border border-gold-border">
+                <CreditCard className="h-3 w-3 text-gold animate-pulse" />
+                AWAITING TEST PAYMENT
+              </span>
+            )}
+            {running && !waitingPayment && (
               <span className="flex items-center gap-1.5 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-gold-light text-gold border border-gold-border">
                 <span className="h-1.5 w-1.5 rounded-full bg-gold animate-pulse" />
                 LIVE
@@ -250,7 +268,11 @@ export default function AuditTrail({
           {running && (
             <div className="ml-3.5 pl-6 py-2 flex items-center gap-2 text-xs text-gold font-medium">
               <span className="h-2 w-2 rounded-full bg-gold animate-ping" />
-              <span>Analyzing merchant catalog and evaluating policy rules…</span>
+              <span>
+                {waitingPayment
+                  ? "Governance passed. Order ready — waiting for user to proceed to test payment…"
+                  : "Analyzing merchant catalog and evaluating policy rules…"}
+              </span>
             </div>
           )}
         </div>

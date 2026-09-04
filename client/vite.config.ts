@@ -10,6 +10,7 @@ export default defineConfig({
       "/policy-check": "http://localhost:3001",
       "/order": "http://localhost:3001",
       "/agent": "http://localhost:3001",
+      "/payment": "http://localhost:3001",
       "/health": "http://localhost:3001"
     }
   }

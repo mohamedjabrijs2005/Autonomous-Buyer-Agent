@@ -16,8 +16,9 @@ import AuditTrail from "./components/AuditTrail";
 import BudgetMeter from "./components/BudgetMeter";
 import RiskMeter from "./components/RiskMeter";
 import ApprovalGate from "./components/ApprovalGate";
+import PaymentPanel from "./components/PaymentPanel";
 import RunHistory from "./components/RunHistory";
-import type { TimelineStep, RunSummary, RiskInfo, ApprovalRequest } from "./types";
+import type { TimelineStep, RunSummary, RiskInfo, ApprovalRequest, PaymentInfo } from "./types";
 import { API_BASE } from "./config";
 import { exportAuditPdf } from "./utils/pdfExport";
 
@@ -37,6 +38,7 @@ export default function App() {
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [risk, setRisk] = useState<RiskInfo | null>(null);
   const [approval, setApproval] = useState<ApprovalRequest | null>(null);
+  const [payment, setPayment] = useState<PaymentInfo | null>(null);
   const [deciding, setDeciding] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [lastOrder, setLastOrder] = useState<{
@@ -46,6 +48,7 @@ export default function App() {
   } | null>(null);
 
   const esRef = useRef<EventSource | null>(null);
+  const paymentRef = useRef<PaymentInfo | null>(null);
   const stepsRef = useRef<TimelineStep[]>([]);
   const committedRef = useRef(0);
   const riskRef = useRef<RiskInfo | null>(null);
@@ -90,7 +93,8 @@ export default function App() {
       status,
       total: committedRef.current,
       steps: stepsRef.current,
-      risk: riskRef.current || undefined
+      risk: riskRef.current || undefined,
+      payment: paymentRef.current || undefined
     };
     setHistory((prev) => [...prev, summary]);
     setRunning(false);
@@ -103,6 +107,7 @@ export default function App() {
     stepsRef.current = [];
     committedRef.current = 0;
     riskRef.current = null;
+    paymentRef.current = null;
     runMetaRef.current = { goal, budget };
     runIdRef.current = genRunId();
     setSteps([]);
@@ -112,6 +117,7 @@ export default function App() {
     setViewingId(null);
     setRisk(null);
     setApproval(null);
+    setPayment(null);
     setStopping(false);
     setLastOrder(null);
 
@@ -448,14 +454,135 @@ export default function App() {
       });
     });
 
+    es.addEventListener("awaiting_payment", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      const paymentInfo: PaymentInfo = {
+        status: "awaiting_payment",
+        orderId: data.order.id,
+        amount: data.order.amount,
+        currency: data.order.currency,
+        reason: data.reason
+      };
+      paymentRef.current = paymentInfo;
+      setPayment(paymentInfo);
+      addStep({
+        event: "awaiting_payment",
+        label: "Awaiting Razorpay test payment",
+        status: "warn",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: (
+          <div className="space-y-1">
+            <div className="text-gold-dark font-medium">{data.reason}</div>
+            <div className="font-mono text-[11px] text-muted">
+              Order ID: {data.order.id} · ₹{(data.order.amount / 100).toFixed(2)}
+            </div>
+          </div>
+        )
+      });
+    });
+
+    es.addEventListener("payment_initiated", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      setPayment((prev) => (prev ? { ...prev, status: "processing" } : null));
+      addStep({
+        event: "payment_initiated",
+        label: "Payment initiated — opening Razorpay Checkout",
+        status: "info",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: <div className="text-xs text-muted">{data.reason}</div>
+      });
+    });
+
+    es.addEventListener("payment_verification_started", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      addStep({
+        event: "payment_verification_started",
+        label: "Verifying payment signature with backend…",
+        status: "info",
+        timestamp: data.timestamp,
+        raw: data
+      });
+    });
+
+    es.addEventListener("payment_verified", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      const updated: PaymentInfo | null = paymentRef.current
+        ? { ...paymentRef.current, status: "verified", paymentId: data.payment_id }
+        : null;
+      paymentRef.current = updated;
+      setPayment(updated);
+      addStep({
+        event: "payment_verified",
+        label: "Razorpay payment verified",
+        status: "pass",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: (
+          <div className="space-y-1">
+            <div className="text-pass font-medium">HMAC SHA-256 signature verified server-side.</div>
+            <div className="font-mono text-[11px] text-muted">Payment ID: {data.payment_id}</div>
+          </div>
+        )
+      });
+    });
+
+    es.addEventListener("payment_cancelled", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      const updated: PaymentInfo | null = paymentRef.current
+        ? { ...paymentRef.current, status: "cancelled", reason: data.reason }
+        : null;
+      paymentRef.current = updated;
+      setPayment(updated);
+      setGateStatus("failed");
+      addStep({
+        event: "payment_cancelled",
+        label: "Payment cancelled by user",
+        status: "warn",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: <div className="text-muted font-medium">{data.reason || "Payment cancelled by user."}</div>
+      });
+      es.close();
+      finishRun("stopped");
+    });
+
+    es.addEventListener("payment_failed", (e) => {
+      const data = JSON.parse((e as MessageEvent).data);
+      const updated: PaymentInfo | null = paymentRef.current
+        ? { ...paymentRef.current, status: "failed", reason: data.reason }
+        : null;
+      paymentRef.current = updated;
+      setPayment(updated);
+      setGateStatus("failed");
+      addStep({
+        event: "payment_failed",
+        label: "Razorpay Test Mode payment failed",
+        status: "fail",
+        timestamp: data.timestamp,
+        raw: data,
+        detail: <div className="text-fail font-medium">{data.reason || "Payment could not be completed."}</div>
+      });
+      es.close();
+      finishRun("failed");
+    });
+
     es.addEventListener("done", (e) => {
       const data = JSON.parse((e as MessageEvent).data);
       if (typeof data.total === "number") committedRef.current = data.total;
       setCommitted(committedRef.current);
       setGateStatus("passed");
+      if (data.paymentId) {
+        const updated: PaymentInfo | null = paymentRef.current
+          ? { ...paymentRef.current, status: "verified", paymentId: data.paymentId }
+          : { status: "verified", orderId: data.orderId, amount: data.total * 100, currency: "INR", paymentId: data.paymentId };
+        paymentRef.current = updated;
+        setPayment(updated);
+      }
       addStep({
         event: "done",
-        label: "Flow complete — order placed",
+        label: data.paymentId ? "Flow complete — payment verified" : "Flow complete — order placed",
         status: "pass",
         timestamp: data.timestamp,
         raw: data,
@@ -463,6 +590,7 @@ export default function App() {
           <div className="space-y-1.5">
             <div className="font-mono text-xs font-semibold text-pass">
               Order {data.orderId} · ₹{data.total}
+              {data.paymentId && <span className="ml-2 text-muted font-normal font-mono">({data.paymentId})</span>}
             </div>
             <div className="text-xs text-muted space-y-0.5">
               {data.finalCart.map((c: any) => (
@@ -472,6 +600,11 @@ export default function App() {
                 </div>
               ))}
             </div>
+            {data.paymentId && (
+              <div className="text-[11px] text-pass font-medium pt-1 border-t border-line/60">
+                Transaction completed successfully after policy validation and backend payment signature verification.
+              </div>
+            )}
           </div>
         )
       });
@@ -581,7 +714,11 @@ export default function App() {
             <div className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-gold-light border border-gold-border text-gold-dark">
               <span
                 className={`w-2 h-2 rounded-full ${
-                  running
+                  payment?.status === "awaiting_payment"
+                    ? "bg-accent animate-pulse"
+                    : payment?.status === "processing"
+                    ? "bg-accent2 animate-pulse"
+                    : running
                     ? "bg-pass animate-pulse"
                     : approval
                     ? "bg-gold animate-pulse"
@@ -589,7 +726,15 @@ export default function App() {
                 }`}
               />
               <span className="text-[11px] font-mono font-semibold">
-                {running ? "AGENT LIVE" : approval ? "AWAITING APPROVAL" : "READY"}
+                {payment?.status === "awaiting_payment"
+                  ? "AWAITING TEST PAYMENT"
+                  : payment?.status === "processing"
+                  ? "PROCESSING PAYMENT"
+                  : running
+                  ? "AGENT LIVE"
+                  : approval
+                  ? "AWAITING APPROVAL"
+                  : "READY"}
               </span>
             </div>
 
@@ -616,6 +761,19 @@ export default function App() {
         {approval && !viewedRun && (
           <div className="mb-6">
             <ApprovalGate request={approval} onDecide={handleApprove} deciding={deciding} />
+          </div>
+        )}
+
+        {/* Razorpay Test Mode Payment Panel */}
+        {payment && !viewedRun && (
+          <div className="mb-6">
+            <PaymentPanel
+              payment={payment}
+              runId={runIdRef.current}
+              onInitiated={() => {
+                setPayment((prev) => (prev ? { ...prev, status: "processing" } : null));
+              }}
+            />
           </div>
         )}
 
@@ -809,6 +967,7 @@ export default function App() {
               onRun={runAgent}
               running={running}
               waitingApproval={!!approval}
+              waitingPayment={payment?.status === "awaiting_payment"}
             />
           </div>
 
@@ -818,6 +977,7 @@ export default function App() {
               steps={displaySteps}
               running={displayRunning}
               waitingApproval={!!approval && !viewedRun}
+              waitingPayment={payment?.status === "awaiting_payment" && !viewedRun}
             />
           </div>
         </div>
